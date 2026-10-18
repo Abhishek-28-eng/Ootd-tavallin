@@ -233,8 +233,37 @@ jobs:
             docker compose -f docker-compose.prod.yml run --rm \
               api sh -c "cd /app/apps/api && npx sequelize-cli db:migrate"
 
+            # Setup SSL directories and dummy certificate if certificates don't exist yet
+            mkdir -p /opt/tavallin/certbot_certs/live/server.devwithabhi.de
+            mkdir -p /opt/tavallin/certbot_www
+
+            if [ ! -f /opt/tavallin/certbot_certs/live/server.devwithabhi.de/fullchain.pem ]; then
+              echo "🔐 Creating temporary dummy certificate for initial Nginx boot..."
+              openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+                -keyout /opt/tavallin/certbot_certs/live/server.devwithabhi.de/privkey.pem \
+                -out /opt/tavallin/certbot_certs/live/server.devwithabhi.de/fullchain.pem \
+                -subj "/CN=server.devwithabhi.de"
+            fi
+
             # Start all services
             docker compose -f docker-compose.prod.yml up -d
+
+            # If certificate is self-signed (dummy), obtain real Let's Encrypt certificate
+            if ! openssl x509 -in /opt/tavallin/certbot_certs/live/server.devwithabhi.de/fullchain.pem -issuer -noout 2>/dev/null | grep -i "Let's Encrypt" >/dev/null 2>&1; then
+              echo "🔐 Requesting real Let's Encrypt certificate for server.devwithabhi.de & panel.devwithabhi.de..."
+              docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+                --webroot \
+                --webroot-path=/var/www/certbot \
+                --email "abhishektalole47@gmail.com" \
+                --agree-tos \
+                --no-eff-email \
+                --force-renewal \
+                -d server.devwithabhi.de \
+                -d panel.devwithabhi.de || echo "⚠️ Certbot challenge failed. Verify DNS A records point to this EC2 IP."
+
+              # Reload Nginx with real certificate
+              docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload || docker compose -f docker-compose.prod.yml restart nginx || true
+            fi
 
             # Clean up old images
             docker image prune -f
