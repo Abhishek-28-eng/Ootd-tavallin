@@ -46,10 +46,14 @@ module.exports = {
     charset: 'utf8mb4',
     dialectOptions: {
       charset: 'utf8mb4',
-      ssl: {
-        require: true,
-        rejectUnauthorized: true,
-      },
+      ...(process.env.DB_SSL === 'true'
+        ? {
+            ssl: {
+              require: true,
+              rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true',
+            },
+          }
+        : {}),
     },
     define: {
       underscored: true,

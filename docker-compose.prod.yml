@@ -1,21 +1,16 @@
-version: "3.9"
-
 services:
   # ─── MySQL Database ───────────────────────────────────────────
   mysql:
     image: mysql:8.3
     container_name: tavallin_mysql
     restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-tavallin_root_secret}
-      MYSQL_DATABASE: ${DB_NAME:-tavallin_prod}
-      MYSQL_USER: ${DB_USER:-tavallin}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-tavallin_secret}
+    env_file:
+      - .env.production
     volumes:
       - mysql_data:/var/lib/mysql
       - ./infrastructure/docker/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${DB_USER:-tavallin}", "-p${DB_PASSWORD:-tavallin_secret}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u $$MYSQL_USER -p$$MYSQL_PASSWORD"]
       interval: 10s
       timeout: 5s
       retries: 10

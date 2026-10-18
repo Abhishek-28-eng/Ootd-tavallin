@@ -136,6 +136,11 @@ jobs:
             DB_USER=${{ secrets.DB_USER }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             DB_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }}
+            DB_SSL=false
+            MYSQL_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }}
+            MYSQL_DATABASE=${{ secrets.DB_NAME }}
+            MYSQL_USER=${{ secrets.DB_USER }}
+            MYSQL_PASSWORD=${{ secrets.DB_PASSWORD }}
             DB_POOL_MIN=2
             DB_POOL_MAX=10
             DB_LOGGING=false
@@ -177,6 +182,9 @@ jobs:
             FEATURE_AI_STYLIST=false
             ENVEOF
 
+            # Copy to .env for docker compose auto-discovery
+            cp .env.production .env
+
             # Login to GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
@@ -202,11 +210,7 @@ jobs:
 
             # Run database migrations
             docker compose -f docker-compose.prod.yml run --rm \
-              -e DB_HOST=mysql \
-              api node -e "
-                const { execSync } = require('child_process');
-                execSync('npx sequelize-cli db:migrate --config /app/apps/api/.sequelizerc.js', { stdio: 'inherit', cwd: '/app/apps/api' });
-              " || docker compose -f docker-compose.prod.yml run --rm api sh -c "cd /app/apps/api && npx sequelize-cli db:migrate"
+              api sh -c "cd /app/apps/api && npx sequelize-cli db:migrate"
 
             # Start all services
             docker compose -f docker-compose.prod.yml up -d
