@@ -1,0 +1,44 @@
+services:
+  mysql:
+    image: mysql:8.3
+    container_name: tavallin_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: tavallin_root_secret
+      MYSQL_DATABASE: tavallin_dev
+      MYSQL_USER: tavallin
+      MYSQL_PASSWORD: tavallin_secret
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "tavallin", "-ptavallin_secret"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --max_allowed_packet=128M
+      - --innodb_buffer_pool_size=256M
+
+  adminer:
+    image: adminer:latest
+    container_name: tavallin_adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+      ADMINER_DESIGN: "pepa-linha-dark"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+    driver: local

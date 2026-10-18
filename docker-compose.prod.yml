@@ -1,0 +1,127 @@
+version: "3.9"
+
+services:
+  # ─── MySQL Database ───────────────────────────────────────────
+  mysql:
+    image: mysql:8.3
+    container_name: tavallin_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-tavallin_root_secret}
+      MYSQL_DATABASE: ${DB_NAME:-tavallin_prod}
+      MYSQL_USER: ${DB_USER:-tavallin}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-tavallin_secret}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./infrastructure/docker/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${DB_USER:-tavallin}", "-p${DB_PASSWORD:-tavallin_secret}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --max_allowed_packet=128M
+      - --innodb_buffer_pool_size=256M
+    networks:
+      - tavallin_net
+
+  # ─── API Server ───────────────────────────────────────────────
+  api:
+    image: ghcr.io/${GITHUB_REPOSITORY_LOWERCASE:-abhishek-28-eng/ootd-tavallin}/api:${IMAGE_TAG:-latest}
+    container_name: tavallin_api
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      DB_HOST: mysql
+      DB_PORT: "3306"
+    ports:
+      - "3000:3000"
+    volumes:
+      - api_uploads:/app/apps/api/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - tavallin_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ─── Admin Dashboard ──────────────────────────────────────────
+  admin:
+    image: ghcr.io/${GITHUB_REPOSITORY_LOWERCASE:-abhishek-28-eng/ootd-tavallin}/admin:${IMAGE_TAG:-latest}
+    container_name: tavallin_admin
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    networks:
+      - tavallin_net
+
+  # ─── Nginx Reverse Proxy ─────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: tavallin_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_certs:/etc/letsencrypt:ro
+    depends_on:
+      - api
+      - admin
+    networks:
+      - tavallin_net
+
+  # ─── Certbot (SSL) ────────────────────────────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    container_name: tavallin_certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  # ─── Adminer (optional, disable in production if not needed) ─
+  adminer:
+    image: adminer:latest
+    container_name: tavallin_adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+      ADMINER_DESIGN: "pepa-linha-dark"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - tavallin_net
+
+volumes:
+  mysql_data:
+    driver: local
+  api_uploads:
+    driver: local
+  certbot_www:
+    driver: local
+  certbot_certs:
+    driver: local
+
+networks:
+  tavallin_net:
+    driver: bridge

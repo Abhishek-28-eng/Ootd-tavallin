@@ -1,0 +1,314 @@
+name: 🚀 Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_seed:
+        description: 'Seed 20 dummy users after deploy?'
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/ootd-tavallin
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Build & Push Docker Images
+  # ─────────────────────────────────────────────
+  build-and-push:
+    name: 🐳 Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/api
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build & Push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/api:latest
+            ${{ env.IMAGE_PREFIX }}/api:sha-${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Admin image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/admin/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/admin:latest
+            ${{ env.IMAGE_PREFIX }}/admin:sha-${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────────
+  # Job 2: Deploy to EC2
+  # ─────────────────────────────────────────────
+  deploy:
+    name: 🚢 Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy deployment files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.prod.yml,infrastructure/nginx"
+          target: "/opt/tavallin"
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            cd /opt/tavallin
+
+            # Write production .env from GitHub Secrets
+            cat > .env.production << 'ENVEOF'
+            NODE_ENV=production
+            APP_NAME=Tavallin
+            APP_VERSION=1.0.0
+            LOG_LEVEL=info
+
+            API_PORT=3000
+            API_BASE_URL=https://server.devwithabhi.de
+            FRONTEND_URL=https://panel.devwithabhi.de
+            ALLOWED_ORIGINS=https://panel.devwithabhi.de,https://server.devwithabhi.de
+
+            DB_HOST=mysql
+            DB_PORT=3306
+            DB_NAME=${{ secrets.DB_NAME }}
+            DB_USER=${{ secrets.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }}
+            DB_POOL_MIN=2
+            DB_POOL_MAX=10
+            DB_LOGGING=false
+
+            JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}
+            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            JWT_ACCESS_EXPIRES_IN=15m
+            JWT_REFRESH_EXPIRES_IN=7d
+
+            SMTP_HOST=${{ secrets.SMTP_HOST }}
+            SMTP_PORT=587
+            SMTP_SECURE=false
+            SMTP_USER=${{ secrets.SMTP_USER }}
+            SMTP_PASS=${{ secrets.SMTP_PASS }}
+            EMAIL_FROM=Tavallin <noreply@tavallin.com>
+
+            STORAGE_PROVIDER=s3
+            STORAGE_BUCKET=${{ secrets.STORAGE_BUCKET }}
+            STORAGE_REGION=${{ secrets.STORAGE_REGION }}
+            STORAGE_ACCESS_KEY_ID=${{ secrets.STORAGE_ACCESS_KEY_ID }}
+            STORAGE_SECRET_ACCESS_KEY=${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
+            STORAGE_PUBLIC_BASE_URL=${{ secrets.STORAGE_PUBLIC_BASE_URL }}
+            STORAGE_UPLOAD_SIZE_LIMIT_MB=10
+            STORAGE_PRESIGNED_EXPIRY_SECONDS=300
+
+            RATE_LIMIT_WINDOW_MS=900000
+            RATE_LIMIT_MAX_REQUESTS=500
+            AUTH_RATE_LIMIT_MAX=20
+
+            PASSWORD_RESET_TOKEN_EXPIRES_MIN=60
+            EMAIL_VERIFY_TOKEN_EXPIRES_HOURS=24
+
+            ADMIN_BOOTSTRAP_EMAIL=${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
+            ADMIN_BOOTSTRAP_PASSWORD=${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
+
+            FEATURE_PUSH_NOTIFICATIONS=false
+            FEATURE_EMAIL_VERIFICATION=false
+            FEATURE_WEATHER_RECOMMENDATIONS=false
+            FEATURE_AI_STYLIST=false
+            ENVEOF
+
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull latest images
+            export IMAGE_TAG=sha-${{ github.sha }}
+            export GITHUB_REPOSITORY_LOWERCASE=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+            docker compose -f docker-compose.prod.yml pull api admin
+
+            # Stop old containers gracefully
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans mysql
+
+            # Wait for MySQL to be healthy
+            echo "Waiting for MySQL to be healthy..."
+            for i in $(seq 1 30); do
+              if docker compose -f docker-compose.prod.yml exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+                echo "MySQL is healthy!"
+                break
+              fi
+              echo "Waiting... ($i/30)"
+              sleep 5
+            done
+
+            # Run database migrations
+            docker compose -f docker-compose.prod.yml run --rm \
+              -e DB_HOST=mysql \
+              api node -e "
+                const { execSync } = require('child_process');
+                execSync('npx sequelize-cli db:migrate --config /app/apps/api/.sequelizerc.js', { stdio: 'inherit', cwd: '/app/apps/api' });
+              " || docker compose -f docker-compose.prod.yml run --rm api sh -c "cd /app/apps/api && npx sequelize-cli db:migrate"
+
+            # Start all services
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Clean up old images
+            docker image prune -f
+
+            echo "✅ Deployment complete!"
+
+      - name: Seed 20 dummy users (optional)
+        if: ${{ github.event.inputs.run_seed == 'true' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/tavallin
+            echo "🌱 Seeding 20 dummy fashion users..."
+            docker compose -f docker-compose.prod.yml exec -T api \
+              sh -c "cd /app/apps/api && npx tsx src/database/seed_dummy_users.ts"
+            echo "✅ 20 dummy users seeded successfully!"
+
+      - name: Health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "🩺 Running health check..."
+            sleep 10
+            curl -sf https://server.devwithabhi.de/health && echo "✅ API is healthy!" || echo "⚠️  API health check failed"
+
+  # ─────────────────────────────────────────────
+  # Job 3: Build Android APK via EAS
+  # ─────────────────────────────────────────────
+  build-apk:
+    name: 📱 Build Android APK
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set API URL in app.json
+        run: |
+          cd apps/mobile
+          # Update apiUrl to point to production API
+          node -e "
+            const fs = require('fs');
+            const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            config.expo.extra.apiUrl = 'https://server.devwithabhi.de/api/v1';
+            fs.writeFileSync('app.json', JSON.stringify(config, null, 2));
+            console.log('✅ Updated apiUrl to production');
+          "
+
+      - name: Setup Expo & EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build Android APK (local build)
+        run: |
+          cd apps/mobile
+          # Use EAS build for APK (preview profile = .apk output)
+          eas build --platform android --profile preview --non-interactive --local --output ../../tavallin-release.apk
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload APK as GitHub Release Asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: tavallin-android-apk
+          path: tavallin-release.apk
+          retention-days: 30
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "Tavallin v${{ github.run_number }} — ${{ github.sha }}"
+          body: |
+            ## 🚀 Tavallin Release v${{ github.run_number }}
+
+            **API:** https://server.devwithabhi.de
+            **Admin:** https://panel.devwithabhi.de
+            **Commit:** ${{ github.sha }}
+
+            ### 📱 Android APK
+            Download `tavallin-release.apk` from the assets below and install directly on your Android device.
+
+            > **Note:** Enable "Install from unknown sources" in Android settings before installing.
+          files: tavallin-release.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

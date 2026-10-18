@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.expo/
+out/
+
+# Environment files (never commit real secrets)
+.env
+.env.local
+.env.*.local
+.env.staging
+.env.production
+
+# Keep example
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+
+# Jest
+coverage/
+
+# Expo
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+.expo-shared/
+
+# Sequelize
+apps/api/src/database/migrations/*.js.map
+
+# Docker volumes
+infrastructure/docker/volumes/
+
+# EAS
+credentials.json
