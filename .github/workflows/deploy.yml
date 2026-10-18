@@ -182,8 +182,8 @@ jobs:
             FEATURE_AI_STYLIST=false
             ENVEOF
 
-            # Copy to .env for docker compose auto-discovery
-            cp .env.production .env
+            # Remove any stale .env so Compose doesn't do unwanted variable expansion
+            rm -f .env
 
             # Login to GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -194,7 +194,7 @@ jobs:
 
             docker compose -f docker-compose.prod.yml pull api admin
 
-            # Stop old containers gracefully
+            # Start MySQL container
             docker compose -f docker-compose.prod.yml up -d --remove-orphans mysql
 
             # Wait for MySQL to be healthy
@@ -207,6 +207,27 @@ jobs:
               echo "Waiting... ($i/30)"
               sleep 5
             done
+
+            # Verify database credentials; if pre-existing volume has mismatch, reset it cleanly
+            echo "Testing MySQL user authentication..."
+            if ! docker compose -f docker-compose.prod.yml exec -T mysql mysql -u"${{ secrets.DB_USER }}" -p"${{ secrets.DB_PASSWORD }}" -e "SELECT 1;" "${{ secrets.DB_NAME }}" >/dev/null 2>&1; then
+              echo "⚠️ Database authentication failed (likely pre-existing volume from prior run)."
+              echo "🔄 Recreating MySQL volume to initialize fresh with current credentials..."
+              docker compose -f docker-compose.prod.yml stop mysql
+              docker compose -f docker-compose.prod.yml rm -f -v mysql
+              docker volume rm -f tavallin_mysql_data opt_mysql_data || true
+              docker compose -f docker-compose.prod.yml up -d mysql
+              echo "Waiting for fresh MySQL to initialize..."
+              for i in $(seq 1 30); do
+                if docker compose -f docker-compose.prod.yml exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+                  echo "MySQL is healthy with fresh volume!"
+                  break
+                fi
+                echo "Waiting... ($i/30)"
+                sleep 5
+              done
+              sleep 8
+            fi
 
             # Run database migrations
             docker compose -f docker-compose.prod.yml run --rm \
