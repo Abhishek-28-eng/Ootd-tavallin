@@ -18,7 +18,11 @@ COPY packages/ ./packages/
 COPY apps/admin/ ./apps/admin/
 COPY tsconfig.base.json ./
 
-# Build
+# Build shared package first
+WORKDIR /app
+RUN npm run build --workspace=@tavallin/shared
+
+# Build Admin
 WORKDIR /app/apps/admin
 RUN npm run build
 

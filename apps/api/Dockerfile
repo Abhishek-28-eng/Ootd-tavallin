@@ -22,6 +22,10 @@ COPY apps/api/ ./apps/api/
 # Copy root tsconfig
 COPY tsconfig.base.json ./
 
+# Build shared package first (required for @tavallin/shared types & dist)
+WORKDIR /app
+RUN npm run build --workspace=@tavallin/shared
+
 # Build the API
 WORKDIR /app/apps/api
 RUN npm run build
@@ -36,18 +40,16 @@ WORKDIR /app
 # Copy workspace root manifests
 COPY package.json package-lock.json ./
 
-# Copy package manifests
+# Copy package manifests & compiled shared package from builder
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
+COPY --from=builder /app/packages ./packages
 
 # Install only production dependencies
 RUN npm ci --omit=dev --ignore-scripts
 
 # Copy compiled output from builder
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
-
-# Copy shared package (needed at runtime if referenced)
-COPY --from=builder /app/packages ./packages
 
 # Copy sequelize config and migration files (needed for migrate command)
 COPY apps/api/.sequelizerc ./apps/api/
