@@ -1,6 +1,9 @@
 # ─── Stage 1: Build ───────────────────────────────────────────
 FROM node:20-alpine AS builder
 
+# Install build tools for native addons (argon2, etc.)
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 # Copy workspace root manifests
@@ -10,14 +13,11 @@ COPY package.json package-lock.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
-# Install all dependencies (including dev for build)
-RUN npm ci --ignore-scripts
+# Install all dependencies (including dev for build & compiling native addons)
+RUN npm ci
 
 # Copy shared package source
 COPY packages/ ./packages/
-
-# Copy API source
-COPY apps/api/ ./apps/api/
 
 # Copy root tsconfig
 COPY tsconfig.base.json ./
@@ -26,6 +26,9 @@ COPY tsconfig.base.json ./
 WORKDIR /app
 RUN npm run build --workspace=@tavallin/shared
 
+# Copy API source
+COPY apps/api/ ./apps/api/
+
 # Build the API
 WORKDIR /app/apps/api
 RUN npm run build
@@ -33,7 +36,8 @@ RUN npm run build
 # ─── Stage 2: Production ──────────────────────────────────────
 FROM node:20-alpine AS production
 
-RUN apk add --no-cache dumb-init
+# Install dumb-init and build tools for native addons
+RUN apk add --no-cache dumb-init python3 make g++
 
 WORKDIR /app
 
@@ -45,8 +49,8 @@ COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 COPY --from=builder /app/packages ./packages
 
-# Install only production dependencies
-RUN npm ci --omit=dev --ignore-scripts
+# Install only production dependencies (compiling native addons, then clean build tools)
+RUN npm ci --omit=dev && apk del python3 make g++
 
 # Copy compiled output from builder
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
