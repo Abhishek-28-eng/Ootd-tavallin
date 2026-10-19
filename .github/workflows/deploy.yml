@@ -226,53 +226,64 @@ jobs:
             # Remove the obsolete bootstrap config to avoid duplicate HTTP server names.
             rm -f /opt/tavallin/infrastructure/nginx/conf.d/tavallin-init.conf
 
-            # Ensure the ACME webroot is shared by Nginx and Certbot.
-            mkdir -p /opt/tavallin/certbot_www/.well-known/acme-challenge
+            # Keep existing production certificates untouched whenever they are valid.
+            # The deploy SSH user may not own /opt/tavallin/certbot_certs, so all host
+            # filesystem operations on that root-owned directory use sudo.
+            sudo mkdir -p /opt/tavallin/certbot_www/.well-known/acme-challenge
             CERT_DIR=/opt/tavallin/certbot_certs
             LIVE_DIR="$CERT_DIR/live/server.devwithabhi.de"
             RENEWAL_CONF="$CERT_DIR/renewal/server.devwithabhi.de.conf"
 
-            # Request a certificate if the managed lineage or either PEM is missing.
             NEED_CERT=0
-            if [ ! -f "$RENEWAL_CONF" ] || [ ! -s "$LIVE_DIR/fullchain.pem" ] || [ ! -s "$LIVE_DIR/privkey.pem" ]; then
+            if ! sudo test -s "$LIVE_DIR/fullchain.pem" || \
+               ! sudo test -s "$LIVE_DIR/privkey.pem" || \
+               ! sudo openssl x509 -in "$LIVE_DIR/fullchain.pem" -checkend 86400 -noout >/dev/null 2>&1; then
               NEED_CERT=1
             fi
 
-            # Nginx needs a certificate to start on the very first deployment.
-            # Certbot will replace this temporary certificate with the managed one.
+            if [ ! -f "$RENEWAL_CONF" ]; then
+              echo "WARNING: Certbot renewal configuration is missing; preserving any currently valid certificate."
+            fi
+
+            # On a first install (or when the certificate is invalid/expired), Nginx
+            # needs a short-lived bootstrap certificate. Never overwrite a valid cert.
             if [ "$NEED_CERT" = "1" ]; then
-              mkdir -p "$LIVE_DIR"
-              if [ ! -s "$LIVE_DIR/fullchain.pem" ] || [ ! -s "$LIVE_DIR/privkey.pem" ]; then
+              sudo mkdir -p "$LIVE_DIR"
+              if ! sudo test -s "$LIVE_DIR/fullchain.pem" || ! sudo test -s "$LIVE_DIR/privkey.pem"; then
                 echo "Creating temporary certificate for initial Nginx startup..."
-                openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+                sudo openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
                   -keyout "$LIVE_DIR/privkey.pem" \
                   -out "$LIVE_DIR/fullchain.pem" \
                   -subj "/CN=server.devwithabhi.de"
+                sudo chmod 644 "$LIVE_DIR/fullchain.pem"
+                sudo chmod 600 "$LIVE_DIR/privkey.pem"
               fi
+            else
+              echo "Existing TLS certificate is present and valid; skipping certificate issuance."
             fi
 
-            # Start services and validate the current Nginx configuration.
+            # Start services and validate Nginx before any certificate replacement.
             docker compose -f docker-compose.prod.yml up -d
             docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
 
             if [ "$NEED_CERT" = "1" ]; then
               echo "Requesting Let's Encrypt certificate for both domains..."
 
-              # Remove the temporary live directory before Certbot creates its symlinks.
-              rm -rf "$LIVE_DIR"
+              # Remove only the bootstrap live directory, with elevated permissions.
+              # Certbot owns the shared /etc/letsencrypt volume inside its container.
+              sudo rm -rf "$LIVE_DIR"
 
               docker compose -f docker-compose.prod.yml run --rm \
                 --entrypoint certbot certbot certonly \
                 --webroot \
                 --webroot-path=/var/www/certbot \
+                --cert-name server.devwithabhi.de \
                 --email "abhishektalole47@gmail.com" \
                 --agree-tos \
                 --no-eff-email \
                 -d server.devwithabhi.de \
                 -d panel.devwithabhi.de
 
-              # Validate the files from inside the Certbot container, which has the
-              # same certificate volume and appropriate permissions.
               echo "Verifying the issued certificate..."
               docker compose -f docker-compose.prod.yml run --rm \
                 --entrypoint sh certbot -c 'test -s /etc/letsencrypt/live/server.devwithabhi.de/fullchain.pem && test -s /etc/letsencrypt/live/server.devwithabhi.de/privkey.pem && test -f /etc/letsencrypt/renewal/server.devwithabhi.de.conf'
