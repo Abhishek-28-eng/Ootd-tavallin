@@ -88,6 +88,7 @@ jobs:
   deploy:
     name: 🚢 Deploy to EC2
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: build-and-push
     environment: production
     permissions:
@@ -208,54 +209,41 @@ jobs:
               sleep 5
             done
 
-            # Verify database credentials; if pre-existing volume has mismatch, reset it cleanly
+            # Verify database credentials without deleting production data.
             echo "Testing MySQL user authentication..."
-            if ! docker compose -f docker-compose.prod.yml exec -T mysql mysql -u"${{ secrets.DB_USER }}" -p"${{ secrets.DB_PASSWORD }}" -e "SELECT 1;" "${{ secrets.DB_NAME }}" >/dev/null 2>&1; then
-              echo "⚠️ Database authentication failed (likely pre-existing volume from prior run)."
-              echo "🔄 Recreating MySQL volume to initialize fresh with current credentials..."
-              docker compose -f docker-compose.prod.yml stop mysql
-              docker compose -f docker-compose.prod.yml rm -f -v mysql
-              docker volume rm -f tavallin_mysql_data opt_mysql_data || true
-              docker compose -f docker-compose.prod.yml up -d mysql
-              echo "Waiting for fresh MySQL to initialize..."
-              for i in $(seq 1 30); do
-                if docker compose -f docker-compose.prod.yml exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
-                  echo "MySQL is healthy with fresh volume!"
-                  break
-                fi
-                echo "Waiting... ($i/30)"
-                sleep 5
-              done
-              sleep 8
+            if ! docker compose -f docker-compose.prod.yml exec -T mysql \
+              mysql -u"${{ secrets.DB_USER }}" -p"${{ secrets.DB_PASSWORD }}" \
+              -e "SELECT 1;" "${{ secrets.DB_NAME }}" >/dev/null 2>&1; then
+              echo "ERROR: MySQL authentication failed. No database volume was deleted."
+              echo "Check DB_NAME, DB_USER, DB_PASSWORD and the existing MySQL grants."
+              exit 1
             fi
 
             # Run database migrations
             docker compose -f docker-compose.prod.yml run --rm \
               api sh -c "cd /app/apps/api && npx sequelize-cli db:migrate"
 
-            # Remove the old bootstrap config left by previous deployments.
-            # The repository now uses tavallin.conf for both ACME HTTP and HTTPS.
+            # Remove the obsolete bootstrap config to avoid duplicate HTTP server names.
             rm -f /opt/tavallin/infrastructure/nginx/conf.d/tavallin-init.conf
 
-            # Ensure the ACME webroot exists and is shared with Nginx.
+            # Ensure the ACME webroot is shared by Nginx and Certbot.
             mkdir -p /opt/tavallin/certbot_www/.well-known/acme-challenge
             CERT_DIR=/opt/tavallin/certbot_certs
             LIVE_DIR="$CERT_DIR/live/server.devwithabhi.de"
             RENEWAL_CONF="$CERT_DIR/renewal/server.devwithabhi.de.conf"
 
-            # Certbot's renewal config, not merely the presence of PEM files,
-            # determines whether a real managed certificate has been issued.
+            # Request a certificate if the managed lineage or either PEM is missing.
             NEED_CERT=0
-            if [ ! -f "$RENEWAL_CONF" ]; then
+            if [ ! -f "$RENEWAL_CONF" ] || [ ! -s "$LIVE_DIR/fullchain.pem" ] || [ ! -s "$LIVE_DIR/privkey.pem" ]; then
               NEED_CERT=1
-              mkdir -p "$LIVE_DIR"
+            fi
 
-              # Nginx needs a certificate to start because the production
-              # config contains HTTPS server blocks. This temporary certificate
-              # is removed after Nginx has loaded it and before Certbot issues
-              # the real certificate.
+            # Nginx needs a certificate to start on the very first deployment.
+            # Certbot will replace this temporary certificate with the managed one.
+            if [ "$NEED_CERT" = "1" ]; then
+              mkdir -p "$LIVE_DIR"
               if [ ! -s "$LIVE_DIR/fullchain.pem" ] || [ ! -s "$LIVE_DIR/privkey.pem" ]; then
-                echo "🔐 Creating temporary certificate for initial Nginx startup..."
+                echo "Creating temporary certificate for initial Nginx startup..."
                 openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
                   -keyout "$LIVE_DIR/privkey.pem" \
                   -out "$LIVE_DIR/fullchain.pem" \
@@ -263,20 +251,16 @@ jobs:
               fi
             fi
 
-            # Start services; Nginx can now load either the real or temporary cert.
+            # Start services and validate the current Nginx configuration.
             docker compose -f docker-compose.prod.yml up -d
             docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
 
             if [ "$NEED_CERT" = "1" ]; then
-              echo "🔐 Requesting Let's Encrypt certificate for both domains..."
+              echo "Requesting Let's Encrypt certificate for both domains..."
 
-              # Remove only the temporary live directory. Nginx has already
-              # loaded the bootstrap certificate in memory; Certbot must own
-              # and create the live/ files as symlinks for its first issuance.
+              # Remove the temporary live directory before Certbot creates its symlinks.
               rm -rf "$LIVE_DIR"
 
-              # Override the service's renewal-loop entrypoint so this one-off
-              # command actually runs `certbot certonly`.
               docker compose -f docker-compose.prod.yml run --rm \
                 --entrypoint certbot certbot certonly \
                 --webroot \
@@ -287,15 +271,20 @@ jobs:
                 -d server.devwithabhi.de \
                 -d panel.devwithabhi.de
 
-              # Fail the deployment if Certbot didn't create a managed cert.
-              test -s "$LIVE_DIR/fullchain.pem"
-              test -s "$LIVE_DIR/privkey.pem"
-              test -f "$RENEWAL_CONF"
+              # Validate the files from inside the Certbot container, which has the
+              # same certificate volume and appropriate permissions.
+              echo "Verifying the issued certificate..."
+              docker compose -f docker-compose.prod.yml run --rm \
+                --entrypoint sh certbot -c 'test -s /etc/letsencrypt/live/server.devwithabhi.de/fullchain.pem && test -s /etc/letsencrypt/live/server.devwithabhi.de/privkey.pem && test -f /etc/letsencrypt/renewal/server.devwithabhi.de.conf'
 
-              # Validate and reload Nginx with the real certificate.
+              echo "Validating Nginx with the issued certificate..."
               docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
-              docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload
             fi
+
+            # Always reload Nginx so configuration and certificate changes take effect.
+            echo "Reloading Nginx..."
+            docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
+            docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload
 
             # Clean up old images
             docker image prune -f
@@ -324,9 +313,18 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            echo "🩺 Running health check..."
-            sleep 10
-            curl -sf https://server.devwithabhi.de/health && echo "✅ API is healthy!" || echo "⚠️  API health check failed"
+            set -eu
+            echo "Running API health check..."
+            for attempt in $(seq 1 12); do
+              if curl --fail --silent --show-error https://server.devwithabhi.de/health; then
+                echo "API health check passed."
+                exit 0
+              fi
+              echo "Health check attempt ${attempt}/12 failed; retrying in 5 seconds..."
+              sleep 5
+            done
+            echo "ERROR: API health check failed after 12 attempts."
+            exit 1
 
   # ─────────────────────────────────────────────
   # Job 3: Build Android APK via EAS
@@ -334,6 +332,9 @@ jobs:
   build-apk:
     name: 📱 Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # APK packaging is optional and must not turn a successful production deploy into a failed workflow.
+    continue-on-error: true
     needs: deploy
     if: github.ref == 'refs/heads/main'
     permissions:
