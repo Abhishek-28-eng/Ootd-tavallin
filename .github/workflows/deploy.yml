@@ -256,9 +256,9 @@ jobs:
               # the real certificate.
               if [ ! -s "$LIVE_DIR/fullchain.pem" ] || [ ! -s "$LIVE_DIR/privkey.pem" ]; then
                 echo "🔐 Creating temporary certificate for initial Nginx startup..."
-                openssl req -x509 -nodes -newkey rsa:2048 -days 1 \\
-                  -keyout "$LIVE_DIR/privkey.pem" \\
-                  -out "$LIVE_DIR/fullchain.pem" \\
+                openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+                  -keyout "$LIVE_DIR/privkey.pem" \
+                  -out "$LIVE_DIR/fullchain.pem" \
                   -subj "/CN=server.devwithabhi.de"
               fi
             fi
@@ -277,14 +277,14 @@ jobs:
 
               # Override the service's renewal-loop entrypoint so this one-off
               # command actually runs `certbot certonly`.
-              docker compose -f docker-compose.prod.yml run --rm \\
-                --entrypoint certbot certbot certonly \\
-                --webroot \\
-                --webroot-path=/var/www/certbot \\
-                --email "abhishektalole47@gmail.com" \\
-                --agree-tos \\
-                --no-eff-email \\
-                -d server.devwithabhi.de \\
+              docker compose -f docker-compose.prod.yml run --rm \
+                --entrypoint certbot certbot certonly \
+                --webroot \
+                --webroot-path=/var/www/certbot \
+                --email "abhishektalole47@gmail.com" \
+                --agree-tos \
+                --no-eff-email \
+                -d server.devwithabhi.de \
                 -d panel.devwithabhi.de
 
               # Fail the deployment if Certbot didn't create a managed cert.
