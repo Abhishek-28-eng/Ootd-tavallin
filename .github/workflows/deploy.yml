@@ -233,36 +233,68 @@ jobs:
             docker compose -f docker-compose.prod.yml run --rm \
               api sh -c "cd /app/apps/api && npx sequelize-cli db:migrate"
 
-            # Setup SSL directories and dummy certificate if certificates don't exist yet
-            mkdir -p /opt/tavallin/certbot_certs/live/server.devwithabhi.de
-            mkdir -p /opt/tavallin/certbot_www
+            # Remove the old bootstrap config left by previous deployments.
+            # The repository now uses tavallin.conf for both ACME HTTP and HTTPS.
+            rm -f /opt/tavallin/infrastructure/nginx/conf.d/tavallin-init.conf
 
-            if [ ! -f /opt/tavallin/certbot_certs/live/server.devwithabhi.de/fullchain.pem ]; then
-              echo "🔐 Creating temporary dummy certificate for initial Nginx boot..."
-              openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-                -keyout /opt/tavallin/certbot_certs/live/server.devwithabhi.de/privkey.pem \
-                -out /opt/tavallin/certbot_certs/live/server.devwithabhi.de/fullchain.pem \
-                -subj "/CN=server.devwithabhi.de"
+            # Ensure the ACME webroot exists and is shared with Nginx.
+            mkdir -p /opt/tavallin/certbot_www/.well-known/acme-challenge
+            CERT_DIR=/opt/tavallin/certbot_certs
+            LIVE_DIR="$CERT_DIR/live/server.devwithabhi.de"
+            RENEWAL_CONF="$CERT_DIR/renewal/server.devwithabhi.de.conf"
+
+            # Certbot's renewal config, not merely the presence of PEM files,
+            # determines whether a real managed certificate has been issued.
+            NEED_CERT=0
+            if [ ! -f "$RENEWAL_CONF" ]; then
+              NEED_CERT=1
+              mkdir -p "$LIVE_DIR"
+
+              # Nginx needs a certificate to start because the production
+              # config contains HTTPS server blocks. This temporary certificate
+              # is removed after Nginx has loaded it and before Certbot issues
+              # the real certificate.
+              if [ ! -s "$LIVE_DIR/fullchain.pem" ] || [ ! -s "$LIVE_DIR/privkey.pem" ]; then
+                echo "🔐 Creating temporary certificate for initial Nginx startup..."
+                openssl req -x509 -nodes -newkey rsa:2048 -days 1 \\
+                  -keyout "$LIVE_DIR/privkey.pem" \\
+                  -out "$LIVE_DIR/fullchain.pem" \\
+                  -subj "/CN=server.devwithabhi.de"
+              fi
             fi
 
-            # Start all services
+            # Start services; Nginx can now load either the real or temporary cert.
             docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
 
-            # If certificate is self-signed (dummy), obtain real Let's Encrypt certificate
-            if ! openssl x509 -in /opt/tavallin/certbot_certs/live/server.devwithabhi.de/fullchain.pem -issuer -noout 2>/dev/null | grep -i "Let's Encrypt" >/dev/null 2>&1; then
-              echo "🔐 Requesting real Let's Encrypt certificate for server.devwithabhi.de & panel.devwithabhi.de..."
-              docker compose -f docker-compose.prod.yml run --rm certbot certonly \
-                --webroot \
-                --webroot-path=/var/www/certbot \
-                --email "abhishektalole47@gmail.com" \
-                --agree-tos \
-                --no-eff-email \
-                --force-renewal \
-                -d server.devwithabhi.de \
-                -d panel.devwithabhi.de || echo "⚠️ Certbot challenge failed. Verify DNS A records point to this EC2 IP."
+            if [ "$NEED_CERT" = "1" ]; then
+              echo "🔐 Requesting Let's Encrypt certificate for both domains..."
 
-              # Reload Nginx with real certificate
-              docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload || docker compose -f docker-compose.prod.yml restart nginx || true
+              # Remove only the temporary live directory. Nginx has already
+              # loaded the bootstrap certificate in memory; Certbot must own
+              # and create the live/ files as symlinks for its first issuance.
+              rm -rf "$LIVE_DIR"
+
+              # Override the service's renewal-loop entrypoint so this one-off
+              # command actually runs `certbot certonly`.
+              docker compose -f docker-compose.prod.yml run --rm \\
+                --entrypoint certbot certbot certonly \\
+                --webroot \\
+                --webroot-path=/var/www/certbot \\
+                --email "abhishektalole47@gmail.com" \\
+                --agree-tos \\
+                --no-eff-email \\
+                -d server.devwithabhi.de \\
+                -d panel.devwithabhi.de
+
+              # Fail the deployment if Certbot didn't create a managed cert.
+              test -s "$LIVE_DIR/fullchain.pem"
+              test -s "$LIVE_DIR/privkey.pem"
+              test -f "$RENEWAL_CONF"
+
+              # Validate and reload Nginx with the real certificate.
+              docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
+              docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload
             fi
 
             # Clean up old images
