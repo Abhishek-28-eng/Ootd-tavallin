@@ -1152,7 +1152,7 @@ export class ProductReference extends Model<
   declare brand: CreationOptional<string | null>;
   declare price: CreationOptional<string | null>;
   declare currency: CreationOptional<string>;
-  declare productUrl: string;
+  declare productUrl: CreationOptional<string>;
   declare imageUrl: CreationOptional<string | null>;
   declare isAffiliate: CreationOptional<boolean>;
   declare affiliateDisclosureUrl: CreationOptional<string | null>;
@@ -1192,6 +1192,7 @@ ProductReference.init(
     productUrl: {
       type: DataTypes.STRING(2048),
       allowNull: false,
+      defaultValue: '',
     },
     imageUrl: {
       type: DataTypes.STRING(2048),

@@ -137,7 +137,7 @@ export class OutfitsService {
           brand: p.brand,
           price: p.price?.toString(),
           currency: p.currency ?? 'INR',
-          productUrl: p.productUrl,
+          productUrl: p.productUrl ?? '',
           imageUrl: p.imageUrl,
           isAffiliate: p.isAffiliate ?? false,
         })),
