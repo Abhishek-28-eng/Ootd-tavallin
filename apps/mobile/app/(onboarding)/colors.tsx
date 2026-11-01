@@ -38,7 +38,7 @@ export default function ColorsScreen() {
       Alert.alert('Select colors', 'Please select at least 1 color palette.');
       return;
     }
-    router.push('/(onboarding)/budget');
+    router.push('/(onboarding)/complete');
   };
 
   return (
@@ -48,10 +48,10 @@ export default function ColorsScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.stepIndicator}>STEP 4 OF 5</Text>
+          <Text style={styles.stepIndicator}>STEP 4 OF 4</Text>
         </View>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: '80%' }]} />
+          <View style={[styles.progressFill, { width: '100%' }]} />
         </View>
       </View>
 
@@ -101,7 +101,7 @@ export default function ColorsScreen() {
       <View style={styles.footer}>
         <TouchableOpacity style={styles.nextBtn} onPress={handleNext} activeOpacity={0.88}>
           <Text style={styles.nextBtnText}>
-            Continue to Budget ({colorPreferences.length} selected) →
+            Finish Profile Setup ({colorPreferences.length} selected) →
           </Text>
         </TouchableOpacity>
       </View>

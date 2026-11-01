@@ -7,21 +7,25 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 
 function getApiBaseUrl(): string {
+  // 1. Explicit override via env var (highest priority)
   if (process.env['EXPO_PUBLIC_API_URL']) {
     return process.env['EXPO_PUBLIC_API_URL'];
   }
+
+  // 2. Use Metro's hostUri ONLY when it's a real local IP address
+  //    (skip ngrok / tunnel URLs which are domain-based, not IPs)
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {
     const hostIp = hostUri.split(':')[0];
-    if (hostIp) {
+    // Only use it if it looks like an IPv4 address (e.g. 192.168.x.x)
+    const isLocalIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostIp ?? '');
+    if (isLocalIp && hostIp) {
       return `http://${hostIp}:3000/api/v1`;
     }
   }
-  const configUrl = Constants.expoConfig?.extra?.apiUrl as string | undefined;
-  if (configUrl && !configUrl.includes('localhost')) {
-    return configUrl;
-  }
-  return 'http://192.168.1.25:3000/api/v1';
+
+  // 3. Fallback to the machine's current Wi-Fi LAN IP
+  return 'http://192.168.1.16:3000/api/v1';
 }
 
 const API_BASE_URL = getApiBaseUrl();

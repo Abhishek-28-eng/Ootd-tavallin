@@ -1,13 +1,14 @@
 // ============================================================
 // Users Service
 // ============================================================
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import {
   User,
   UserProfile,
   UserPreference,
   Follow,
   OutfitPost,
+  OutfitMedia,
 } from '../../database/models';
 import { AppError } from '../../shared/errors/AppError';
 import type { UpdateProfileInput, UpdatePreferencesInput, UserPrivateProfile, UserPreferences } from '@tavallin/shared';
@@ -411,6 +412,120 @@ export class UsersService {
   // ─── Complete onboarding ──────────────────────────────────────
   async completeOnboarding(userId: string): Promise<void> {
     await User.update({ isOnboarded: true }, { where: { id: userId } });
+  }
+
+  // ─── Get featured atelier stylists and curators ──────────────
+  async getFeaturedCurators(limit = 10): Promise<Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+    location: string | null;
+    bio: string | null;
+    roleBadge: string;
+    styleSignature: string;
+    followersCount: number;
+    postsCount: number;
+    latestLookThumbnail: string | null;
+  }>> {
+    const users = await User.findAll({
+      where: {
+        isSuspended: false,
+        isPrivate: false,
+      },
+      include: [
+        {
+          model: UserProfile,
+          as: 'profile',
+        },
+        {
+          model: OutfitPost,
+          as: 'outfitPosts',
+          where: { status: 'published', deletedAt: null },
+          required: false,
+          include: [
+            {
+              model: OutfitMedia,
+              as: 'media',
+              attributes: ['publicUrl', 'thumbnailUrl', 'orderIndex'],
+              separate: true,
+              order: [['orderIndex', 'ASC']],
+              limit: 1,
+            },
+          ],
+          limit: 1,
+          order: [['createdAt', 'DESC']],
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit,
+    });
+
+    return users.map((u, i) => {
+      const prof = (u as any).profile as UserProfile | undefined;
+      const posts = (u as any).outfitPosts as OutfitPost[] | undefined;
+      const latestPost = posts?.[0];
+      const media = (latestPost as any)?.media?.[0];
+      const latestThumb = media?.thumbnailUrl || media?.publicUrl || null;
+
+      const roles = ['CURATOR', 'STYLIST', 'ARCHIVE STUDIO', 'MINIMALIST'];
+      const defaultRole = (u.role === 'admin' || u.role === 'moderator') ? 'CURATOR' : roles[i % roles.length]!;
+      const styles = ['SEOUL MINIMAL', 'ARCHIVE STUDIO', 'QUIET LUXURY', 'TOKYO STREET'];
+      const defaultStyle = prof?.location ? prof.location.toUpperCase() : styles[i % styles.length]!;
+
+      return {
+        id: u.id,
+        username: u.username,
+        displayName: prof?.displayName || u.username,
+        avatarUrl: prof?.avatarUrl || null,
+        location: prof?.location || null,
+        bio: prof?.bio || null,
+        roleBadge: defaultRole,
+        styleSignature: defaultStyle,
+        followersCount: prof?.followersCount ?? 0,
+        postsCount: prof?.postsCount ?? 0,
+        latestLookThumbnail: latestThumb,
+      };
+    });
+  }
+
+  // ─── Get story curators for home feed ─────────────────────────
+  async getStoryCurators(limit = 12): Promise<Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+    initials: string;
+    hasActiveFit: boolean;
+  }>> {
+    const users = await User.findAll({
+      where: {
+        isSuspended: false,
+        isPrivate: false,
+      },
+      include: [
+        {
+          model: UserProfile,
+          as: 'profile',
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit,
+    });
+
+    return users.map((u) => {
+      const prof = (u as any).profile as UserProfile | undefined;
+      const name = prof?.displayName || u.username;
+      const initials = name.slice(0, 2).toUpperCase();
+      return {
+        id: u.id,
+        username: u.username,
+        displayName: name,
+        avatarUrl: prof?.avatarUrl || null,
+        initials,
+        hasActiveFit: true,
+      };
+    });
   }
 }
 

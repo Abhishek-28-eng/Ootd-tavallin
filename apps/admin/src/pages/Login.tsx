@@ -65,35 +65,29 @@ export const Login: React.FC = () => {
       >
         {/* Brand header */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div
+          <img
+            src="/ootdi-logo.png"
+            alt="OOTDi"
             style={{
-              width: '48px',
-              height: '48px',
-              margin: '0 auto 16px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #D4AF37 0%, #8C6239 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#0C0D12',
-              fontWeight: 800,
-              fontSize: '22px',
-              boxShadow: '0 8px 24px rgba(212, 175, 55, 0.3)',
+              width: '96px',
+              height: '96px',
+              borderRadius: '50%',
+              margin: '0 auto 12px',
+              display: 'block',
+              objectFit: 'cover',
             }}
-          >
-            T
-          </div>
+          />
           <h1
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: '32px',
-              fontWeight: 600,
-              letterSpacing: '3px',
+              fontSize: '28px',
+              fontWeight: 700,
+              letterSpacing: '2.5px',
               color: '#FFFFFF',
-              marginBottom: '6px',
+              margin: '0 0 6px',
             }}
           >
-            TAVALLIN
+            OOTDi
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>
             Administrative Operations &amp; Moderation

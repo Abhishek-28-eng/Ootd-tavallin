@@ -1,11 +1,15 @@
 import { createApp } from './app';
 import { connectDatabase } from './config/database';
+import { connectRedis, closeRedis } from './config/redis';
 import { logger } from './config/logger';
 import { env } from './config/env';
 
 async function main(): Promise<void> {
   // Connect to database first
   await connectDatabase();
+
+  // Connect to Redis cache (falls back gracefully if offline)
+  await connectRedis();
 
   // Wire all Sequelize model associations
   const { setupAssociations } = await import('./database/models');
@@ -32,7 +36,8 @@ async function main(): Promise<void> {
       try {
         const { closeDatabase } = await import('./config/database');
         await closeDatabase();
-        logger.info('Database connections closed');
+        await closeRedis();
+        logger.info('Database and Redis connections closed');
         process.exit(0);
       } catch (err) {
         logger.error({ err }, 'Error during graceful shutdown');

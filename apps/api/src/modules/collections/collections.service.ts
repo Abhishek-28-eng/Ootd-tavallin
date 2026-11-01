@@ -38,10 +38,49 @@ export class CollectionsService {
       where['isPublic'] = true;
     }
 
-    return Collection.findAll({
+    const collections = await Collection.findAll({
       where,
       order: [['createdAt', 'DESC']],
     });
+
+    const result = await Promise.all(
+      collections.map(async (c) => {
+        const json = c.toJSON() as any;
+        const savedItems = await SavedOutfit.findAll({
+          where: { collectionId: c.id },
+          include: [
+            {
+              model: OutfitPost,
+              as: 'outfitPost',
+              include: [
+                {
+                  model: OutfitMedia,
+                  as: 'media',
+                  attributes: ['publicUrl', 'thumbnailUrl', 'orderIndex'],
+                  separate: true,
+                  order: [['orderIndex', 'ASC']],
+                  limit: 1,
+                },
+              ],
+            },
+          ],
+          order: [['createdAt', 'DESC']],
+          limit: 4,
+        });
+
+        const previewImages = savedItems
+          .map((s: any) => s.outfitPost?.media?.[0]?.thumbnailUrl || s.outfitPost?.media?.[0]?.publicUrl)
+          .filter(Boolean);
+
+        json.previewImages = previewImages;
+        if (!json.coverImageUrl && previewImages.length > 0) {
+          json.coverImageUrl = previewImages[0];
+        }
+        return json;
+      }),
+    );
+
+    return result as Collection[];
   }
 
   async getCollectionById(collectionId: string, requesterId?: string): Promise<{

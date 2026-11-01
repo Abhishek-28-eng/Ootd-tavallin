@@ -125,3 +125,23 @@ export const uploadAvatar = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+export const getFeaturedCurators = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const limit = Number(req.query['limit']) || 10;
+    const curators = await usersService.getFeaturedCurators(limit);
+    respond(res, 200, curators);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getStoryCurators = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const limit = Number(req.query['limit']) || 12;
+    const stories = await usersService.getStoryCurators(limit);
+    respond(res, 200, stories);
+  } catch (err) {
+    next(err);
+  }
+};
+

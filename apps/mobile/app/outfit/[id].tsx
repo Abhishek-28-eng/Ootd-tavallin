@@ -1,6 +1,6 @@
 // ============================================================
-// Outfit Detail Screen — /outfit/[id]
-// Full post view: images, author, likes/saves, comments
+// Outfit Detail Screen — Tavallin Luxury Editorial Post View
+// Full post view: photography carousel, creator, interactions, comments
 // ============================================================
 
 import React, { useState } from 'react';
@@ -16,14 +16,19 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
+  Share,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withSequence } from 'react-native-reanimated';
-import { Colors, Typography, Spacing, Radii } from '../../src/design/tokens';
+import { Colors, Typography, Spacing, Radii, Shadows } from '../../src/design/tokens';
 import { apiClient } from '../../src/lib/apiClient';
+import { hapticLight, hapticSuccess, hapticMedium } from '../../src/lib/haptics';
+import { ImageZoomLightbox } from '../../src/components/ImageZoomLightbox';
+import { EditorialStoryModal } from '../../src/components/EditorialStoryModal';
 import { STYLE_CATEGORY_LABELS, OCCASION_LABELS } from '@tavallin/shared';
 import type { ApiResponse, OutfitPost, CommentsResponse, Comment } from '@tavallin/shared';
 
@@ -37,6 +42,9 @@ export default function OutfitDetailScreen() {
   const insets = useSafeAreaInsets();
   const [commentText, setCommentText] = useState('');
   const [imgIndex, setImgIndex] = useState(0);
+  const [lightboxVisible, setLightboxVisible] = useState(false);
+  const [storyModalVisible, setStoryModalVisible] = useState(false);
+  const [selectedZoomImg, setSelectedZoomImg] = useState('');
 
   const likeScale = useSharedValue(1);
   const saveScale = useSharedValue(1);
@@ -72,7 +80,8 @@ export default function OutfitDetailScreen() {
       return res.data.data;
     },
     onMutate: () => {
-      likeScale.value = withSequence(withSpring(1.4, { damping: 4 }), withSpring(1, { damping: 8 }));
+      hapticSuccess();
+      likeScale.value = withSequence(withSpring(1.35, { damping: 4 }), withSpring(1, { damping: 8 }));
       qc.setQueryData<OutfitPost>(['outfit', id], (old) =>
         old ? { ...old, isLiked: !old.isLiked, likesCount: old.isLiked ? old.likesCount - 1 : old.likesCount + 1 } : old,
       );
@@ -86,7 +95,8 @@ export default function OutfitDetailScreen() {
       return res.data.data;
     },
     onMutate: () => {
-      saveScale.value = withSequence(withSpring(1.4, { damping: 4 }), withSpring(1, { damping: 8 }));
+      hapticLight();
+      saveScale.value = withSequence(withSpring(1.35, { damping: 4 }), withSpring(1, { damping: 8 }));
       qc.setQueryData<OutfitPost>(['outfit', id], (old) =>
         old ? { ...old, isSaved: !old.isSaved, savesCount: old.isSaved ? old.savesCount - 1 : old.savesCount + 1 } : old,
       );
@@ -99,6 +109,7 @@ export default function OutfitDetailScreen() {
       await apiClient.post(`/comments/outfit/${id}`, { content });
     },
     onSuccess: () => {
+      hapticSuccess();
       setCommentText('');
       void qc.invalidateQueries({ queryKey: ['comments', id] });
       void qc.invalidateQueries({ queryKey: ['outfit', id] });
@@ -110,21 +121,47 @@ export default function OutfitDetailScreen() {
     if (commentText.trim()) commentMutation.mutate(commentText.trim());
   };
 
+  const handleShareLook = () => {
+    hapticLight();
+    setStoryModalVisible(true);
+  };
+
   if (postLoading || !post) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loading}><ActivityIndicator color={Colors.midGray} /></View>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.topBarIconBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={20} color={Colors.charcoal} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.loading}>
+          <ActivityIndicator color={Colors.charcoal} />
+        </View>
       </SafeAreaView>
     );
   }
 
+  const creator = post.creator ?? (post as any).author ?? { username: '', displayName: '', avatarUrl: null };
+
   const renderComment = ({ item }: { item: Comment }) => (
     <View style={styles.commentItem}>
-      <Image source={item.author.avatarUrl ? { uri: item.author.avatarUrl } : null} style={styles.commentAvatar} contentFit="cover" cachePolicy="memory-disk" />
+      <View style={styles.commentAvatarWrap}>
+        {item.author.avatarUrl ? (
+          <Image source={{ uri: item.author.avatarUrl }} style={styles.commentAvatar} contentFit="cover" cachePolicy="memory-disk" />
+        ) : (
+          <View style={styles.commentAvatarFallback}>
+            <Text style={styles.commentAvatarInitial}>
+              {(item.author.username || 'U')[0]?.toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
       <View style={styles.commentContent}>
-        <Text style={styles.commentAuthor}>{item.author.username}</Text>
+        <View style={styles.commentMeta}>
+          <Text style={styles.commentAuthor}>@{item.author.username}</Text>
+          <Text style={styles.commentTime}>{_timeAgo(item.createdAt)}</Text>
+        </View>
         <Text style={styles.commentText}>{item.content}</Text>
-        <Text style={styles.commentTime}>{_timeAgo(item.createdAt)}</Text>
       </View>
     </View>
   );
@@ -132,187 +169,309 @@ export default function OutfitDetailScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        {/* Back */}
+        {/* Top Navigation Bar */}
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.topBarIconBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={20} color={Colors.charcoal} />
           </TouchableOpacity>
-          {post.isOwner && (
-            <TouchableOpacity
-              onPress={() =>
-                Alert.alert('Delete Post', 'Are you sure?', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Delete', style: 'destructive',
-                    onPress: async () => {
-                      await apiClient.delete(`/outfits/${id}`);
-                      void qc.invalidateQueries({ queryKey: ['feed'] });
-                      router.back();
-                    },
-                  },
-                ])
-              }
-            >
-              <Text style={styles.deleteText}>Delete</Text>
+
+          <View style={styles.topBarCenter}>
+            <Text style={styles.topBarEyebrow}>✦ LOOKBOOK ENTRY</Text>
+            <Text style={styles.topBarTitle}>EDITORIAL ARCHIVE</Text>
+          </View>
+
+          <View style={styles.topBarRight}>
+            <TouchableOpacity onPress={handleShareLook} style={styles.topBarIconBtn} activeOpacity={0.7}>
+              <Ionicons name="share-outline" size={19} color={Colors.charcoal} />
             </TouchableOpacity>
-          )}
+
+            {post.isOwner && (
+              <TouchableOpacity
+                onPress={() =>
+                  Alert.alert('Archive Post', 'Remove this outfit look from your portfolio?', [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Delete',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await apiClient.delete(`/outfits/${id}`);
+                        void qc.invalidateQueries({ queryKey: ['feed'] });
+                        void qc.invalidateQueries({ queryKey: ['userPosts'] });
+                        router.back();
+                      },
+                    },
+                  ])
+                }
+                style={[styles.topBarIconBtn, styles.deleteBtn]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="trash-outline" size={18} color={Colors.error} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Image carousel */}
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={(e) => {
-              setImgIndex(Math.round(e.nativeEvent.contentOffset.x / SW));
-            }}
-          >
-            {post.media.map((m, idx) => {
-              const imgUrl = m.url ?? (m as any).publicUrl ?? '';
-              return (
-                <Image
-                  key={m.id || idx}
-                  source={{ uri: imgUrl }}
-                  style={[styles.mainImage, { aspectRatio: m.width && m.height ? m.width / m.height : 0.8 }]}
-                  contentFit="cover"
-                  cachePolicy="memory-disk"
-                />
-              );
-            })}
-          </ScrollView>
+          {/* Creator Profile Row (Header) */}
+          <View style={styles.authorRow}>
+            <TouchableOpacity
+              style={styles.authorLeft}
+              onPress={() => router.push(`/user/${creator.username}`)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.avatarBorderRing}>
+                {creator.avatarUrl ? (
+                  <Image source={{ uri: creator.avatarUrl }} style={styles.avatar} contentFit="cover" cachePolicy="memory-disk" />
+                ) : (
+                  <View style={styles.avatarFallback}>
+                    <Text style={styles.avatarFallbackText}>{(creator.username || 'U')[0]?.toUpperCase()}</Text>
+                  </View>
+                )}
+              </View>
+              <View>
+                <View style={styles.creatorNameRow}>
+                  <Text style={styles.displayName}>{creator.displayName || creator.username}</Text>
+                  <Text style={styles.goldStar}>✦</Text>
+                </View>
+                <Text style={styles.username}>@{creator.username}</Text>
+              </View>
+            </TouchableOpacity>
 
-          {/* Page dots */}
+            <View style={styles.tierPill}>
+              <Text style={styles.tierPillText}>CURATOR</Text>
+            </View>
+          </View>
+
+          {/* Image carousel */}
+          <View style={styles.mediaContainer}>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(e) => {
+                setImgIndex(Math.round(e.nativeEvent.contentOffset.x / SW));
+              }}
+            >
+              {post.media.map((m, idx) => {
+                const imgUrl = m.url ?? (m as any).publicUrl ?? '';
+                const ratio = m.width && m.height ? Math.min(Math.max(m.width / m.height, 0.75), 1.25) : 0.8;
+                return (
+                  <TouchableOpacity
+                    key={m.id || idx}
+                    activeOpacity={0.95}
+                    onPress={() => {
+                      hapticLight();
+                      setSelectedZoomImg(imgUrl);
+                      setLightboxVisible(true);
+                    }}
+                  >
+                    <Image
+                      source={{ uri: imgUrl }}
+                      style={[styles.mainImage, { aspectRatio: ratio }]}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                      transition={200}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Inspect Lightbox Badge */}
+            <TouchableOpacity
+              style={styles.inspectBadge}
+              onPress={() => {
+                hapticLight();
+                const currentImg = post.media[imgIndex]?.url ?? (post.media[imgIndex] as any)?.publicUrl ?? '';
+                setSelectedZoomImg(currentImg);
+                setLightboxVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="expand-outline" size={13} color="#FFFFFF" />
+              <Text style={styles.inspectBadgeText}>INSPECT</Text>
+            </TouchableOpacity>
+
+            {/* Pagination badge if multiple */}
+            {post.media.length > 1 && (
+              <View style={styles.counterBadge}>
+                <Text style={styles.counterText}>{imgIndex + 1} / {post.media.length}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Dots Indicator */}
           {post.media.length > 1 && (
-            <View style={styles.dots}>
+            <View style={styles.dotsRow}>
               {post.media.map((_, i) => (
                 <View key={i} style={[styles.dot, i === imgIndex && styles.dotActive]} />
               ))}
             </View>
           )}
 
-          {/* Author row */}
-          {(() => {
-            const creator = post.creator ?? (post as any).author ?? { username: '', displayName: '', avatarUrl: null };
-            return (
-              <View style={styles.authorRow}>
-                <TouchableOpacity
-                  style={styles.authorLeft}
-                  onPress={() => router.push(`/user/${creator.username}`)}
-                >
-                  <Image source={creator.avatarUrl ? { uri: creator.avatarUrl } : null} style={styles.avatar} contentFit="cover" cachePolicy="memory-disk" />
-                  <View>
-                    <Text style={styles.displayName}>{creator.displayName || creator.username}</Text>
-                    <Text style={styles.username}>@{creator.username}</Text>
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.actionsRow}>
-                  <AnimatedTouchable style={likeStyle} onPress={() => likeMutation.mutate()}>
-                    <Text style={[styles.actionBtn, post.isLiked && { color: Colors.likeActive }]}>
-                      {post.isLiked ? '♥' : '♡'}
-                    </Text>
-                  </AnimatedTouchable>
-                  <AnimatedTouchable style={saveStyle} onPress={() => saveMutation.mutate()}>
-                    <Text style={[styles.actionBtn, post.isSaved && { color: Colors.charcoal }]}>
-                      {post.isSaved ? '⊡' : '⊞'}
-                    </Text>
-                  </AnimatedTouchable>
-                </View>
-              </View>
-            );
-          })()}
+          {/* Actions & Metrics Row */}
+          <View style={styles.actionSection}>
+            <View style={styles.actionLeftGroup}>
+              <AnimatedTouchable style={[styles.iconButton, likeStyle]} onPress={() => likeMutation.mutate()} activeOpacity={0.8}>
+                <Ionicons
+                  name={post.isLiked ? 'heart' : 'heart-outline'}
+                  size={24}
+                  color={post.isLiked ? Colors.likeActive : Colors.charcoal}
+                />
+                <Text style={[styles.actionCount, post.isLiked && styles.actionCountLiked]}>
+                  {post.likesCount ?? 0}
+                </Text>
+              </AnimatedTouchable>
 
-          {/* Stats */}
-          <View style={styles.statsRow}>
-            <Text style={styles.stat}>{post.likesCount ?? 0} likes</Text>
-            <Text style={styles.statDot}>·</Text>
-            <Text style={styles.stat}>{post.commentsCount ?? 0} comments</Text>
+              <View style={styles.iconButton}>
+                <Ionicons name="chatbubble-outline" size={22} color={Colors.charcoal} />
+                <Text style={styles.actionCount}>{post.commentsCount ?? 0}</Text>
+              </View>
+
+              <TouchableOpacity style={styles.iconButton} onPress={handleShareLook} activeOpacity={0.8}>
+                <Feather name="send" size={20} color={Colors.charcoal} />
+              </TouchableOpacity>
+            </View>
+
+            <AnimatedTouchable style={saveStyle} onPress={() => saveMutation.mutate()} activeOpacity={0.8}>
+              <Ionicons
+                name={post.isSaved ? 'bookmark' : 'bookmark-outline'}
+                size={24}
+                color={post.isSaved ? Colors.gold : Colors.charcoal}
+              />
+            </AnimatedTouchable>
           </View>
 
-          {/* Caption */}
-          {post.caption && (
-            <View style={styles.captionWrap}>
-              <Text style={styles.captionUser}>{(post.creator?.username ?? (post as any).author?.username ?? '')} </Text>
+          {/* Caption & Story */}
+          {post.caption ? (
+            <View style={styles.captionSection}>
+              <Text style={styles.captionUser}>@{creator.username}</Text>
               <Text style={styles.captionText}>{post.caption}</Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Tags */}
+          {/* Style Category & Occasion Badges */}
           {(((post.styleCategories && post.styleCategories.length > 0)) || ((post.occasions && post.occasions.length > 0))) && (
-            <View style={styles.tagsSection}>
+            <View style={styles.tagsContainer}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagsScroll}>
                 {(post.styleCategories || []).map((s) => (
-                  <View key={s} style={styles.tag}>
-                    <Text style={styles.tagText}>{STYLE_CATEGORY_LABELS[s]}</Text>
+                  <View key={s} style={styles.goldTag}>
+                    <Text style={styles.goldTagText}>
+                      ✦ {STYLE_CATEGORY_LABELS[s] || s}
+                    </Text>
                   </View>
                 ))}
                 {(post.occasions || []).map((o) => (
-                  <View key={o} style={[styles.tag, styles.tagOccasion]}>
-                    <Text style={styles.tagText}>{OCCASION_LABELS[o]}</Text>
+                  <View key={o} style={styles.occasionTag}>
+                    <Text style={styles.occasionTagText}>
+                      {OCCASION_LABELS[o] || o}
+                    </Text>
                   </View>
                 ))}
               </ScrollView>
             </View>
           )}
 
-          {/* Products */}
+          {/* Tagged Garments / Products ("Shop This Look") */}
           {post.products && post.products.length > 0 && (
             <View style={styles.productsSection}>
-              <Text style={styles.sectionTitle}>Shop this look</Text>
-              {(post.products || []).map((p) => (
-                <View key={p.id} style={styles.productRow}>
-                  {p.imageUrl && (
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionHeaderTitle}>FEATURED GARMENTS & ACCESSORIES</Text>
+                <View style={styles.productBadge}>
+                  <Text style={styles.productBadgeText}>{post.products.length} PIECES</Text>
+                </View>
+              </View>
+
+              {post.products.map((p) => (
+                <View key={p.id} style={styles.productCard}>
+                  {p.imageUrl ? (
                     <Image source={{ uri: p.imageUrl }} style={styles.productThumb} contentFit="cover" cachePolicy="memory-disk" />
+                  ) : (
+                    <View style={styles.productThumbFallback}>
+                      <Ionicons name="pricetag-outline" size={20} color={Colors.gold} />
+                    </View>
                   )}
                   <View style={styles.productInfo}>
                     <Text style={styles.productName} numberOfLines={1}>{p.productName}</Text>
                     {p.brand && <Text style={styles.productBrand}>{p.brand}</Text>}
-                    {p.price && <Text style={styles.productPrice}>{p.currency} {p.price}</Text>}
                   </View>
+                  {p.price ? (
+                    <View style={styles.pricePill}>
+                      <Text style={styles.priceText}>{p.currency || '$'}{p.price}</Text>
+                    </View>
+                  ) : null}
                 </View>
               ))}
             </View>
           )}
 
-          {/* Comments */}
+          {/* Comments Discussion Section */}
           <View style={styles.commentsSection}>
-            <Text style={styles.sectionTitle}>Comments</Text>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeaderTitle}>CRITIQUE & CONVERSATION</Text>
+              <Text style={styles.commentCountBadge}>({comments.length})</Text>
+            </View>
+
             {commentsLoading ? (
-              <ActivityIndicator color={Colors.midGray} style={{ marginTop: Spacing[4] }} />
+              <ActivityIndicator color={Colors.charcoal} style={{ marginVertical: Spacing[4] }} />
             ) : comments.length === 0 ? (
-              <Text style={styles.noComments}>Be the first to comment.</Text>
+              <View style={styles.noCommentsWrap}>
+                <Text style={styles.noCommentsIcon}>✦</Text>
+                <Text style={styles.noComments}>Be the first to share style feedback on this look.</Text>
+              </View>
             ) : (
               comments.map((c) => <View key={c.id}>{renderComment({ item: c })}</View>)
             )}
           </View>
 
-          <View style={{ height: 80 + insets.bottom }} />
+          <View style={{ height: 90 + insets.bottom }} />
         </ScrollView>
 
-        {/* Comment input */}
-        <View style={[styles.commentInputWrap, { paddingBottom: insets.bottom || Spacing[3] }]}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Add a comment…"
-            placeholderTextColor={Colors.textPlaceholder}
-            value={commentText}
-            onChangeText={setCommentText}
-            returnKeyType="send"
-            onSubmitEditing={handlePostComment}
-          />
-          <TouchableOpacity
-            onPress={handlePostComment}
-            disabled={!commentText.trim() || commentMutation.isPending}
-            style={[styles.sendBtn, (!commentText.trim() || commentMutation.isPending) && { opacity: 0.4 }]}
-          >
-            {commentMutation.isPending ? (
-              <ActivityIndicator color={Colors.warmWhite} size="small" />
-            ) : (
-              <Text style={styles.sendBtnText}>Post</Text>
-            )}
-          </TouchableOpacity>
+        {/* Sticky Comment Input Bar */}
+        <View style={[styles.commentInputBar, { paddingBottom: insets.bottom || Spacing[3] }]}>
+          <View style={styles.commentInputContainer}>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Add style critique or feedback…"
+              placeholderTextColor={Colors.textPlaceholder}
+              value={commentText}
+              onChangeText={setCommentText}
+              returnKeyType="send"
+              onSubmitEditing={handlePostComment}
+            />
+            <TouchableOpacity
+              onPress={handlePostComment}
+              disabled={!commentText.trim() || commentMutation.isPending}
+              style={[
+                styles.sendCircleBtn,
+                (!commentText.trim() || commentMutation.isPending) && styles.sendBtnDisabled,
+              ]}
+              activeOpacity={0.8}
+            >
+              {commentMutation.isPending ? (
+                <ActivityIndicator color={Colors.warmWhite} size="small" />
+              ) : (
+                <Ionicons name="arrow-up" size={16} color={Colors.warmWhite} />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Lightbox Inspection Studio */}
+      <ImageZoomLightbox
+        visible={lightboxVisible}
+        imageUrl={selectedZoomImg || (post.media[0]?.url ?? (post.media[0] as any)?.publicUrl ?? '')}
+        creatorName={creator?.username}
+        onClose={() => setLightboxVisible(false)}
+      />
+
+      {/* 9:16 Editorial Lookbook Export */}
+      <EditorialStoryModal
+        visible={storyModalVisible}
+        post={post}
+        onClose={() => setStoryModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -327,99 +486,506 @@ function _timeAgo(d: string) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.warmWhite },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.warmWhite,
+  },
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing[5],
-    paddingVertical: Spacing[3],
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[2],
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
+    backgroundColor: Colors.warmWhite,
   },
-  backBtn: {},
-  backText: {
+  topBarIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topBarCenter: {
+    alignItems: 'center',
+  },
+  topBarEyebrow: {
     fontFamily: Typography.fontBody,
-    fontSize: Typography.sm,
-    color: Colors.textSecondary,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: Colors.textGold,
   },
-  deleteText: {
+  topBarTitle: {
     fontFamily: Typography.fontBody,
-    fontSize: Typography.sm,
-    color: Colors.error,
-    fontWeight: '500',
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    letterSpacing: 2,
+    color: Colors.charcoal,
   },
-  mainImage: { width: SW, backgroundColor: Colors.softGray },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 5, paddingVertical: Spacing[2] },
-  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: Colors.midGray },
-  dotActive: { backgroundColor: Colors.charcoal, width: 14 },
+  topBarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
+  },
+  deleteBtn: {
+    backgroundColor: Colors.errorLight,
+    borderColor: 'rgba(198,40,40,0.2)',
+  },
+
+  // ─── Author Row ────────────────────────────────────────────
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing[5],
-    paddingVertical: Spacing[4],
+    paddingVertical: Spacing[3],
+    backgroundColor: Colors.warmWhite,
   },
-  authorLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], flex: 1 },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.softGray },
-  displayName: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '700', color: Colors.charcoal },
-  username: { fontFamily: Typography.fontBody, fontSize: Typography.xs, color: Colors.textSecondary },
-  actionsRow: { flexDirection: 'row', gap: Spacing[4] },
-  actionBtn: { fontSize: 26, color: Colors.charcoal },
-  statsRow: { flexDirection: 'row', paddingHorizontal: Spacing[5], gap: Spacing[2], marginBottom: Spacing[2] },
-  stat: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '600', color: Colors.charcoal },
-  statDot: { fontFamily: Typography.fontBody, fontSize: Typography.sm, color: Colors.textSecondary },
-  captionWrap: { paddingHorizontal: Spacing[5], marginBottom: Spacing[3], flexDirection: 'row', flexWrap: 'wrap' },
-  captionUser: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '700', color: Colors.charcoal },
-  captionText: { fontFamily: Typography.fontBody, fontSize: Typography.sm, color: Colors.charcoal, lineHeight: Typography.sm * 1.5 },
-  tagsSection: { paddingBottom: Spacing[3] },
-  tagsScroll: { paddingHorizontal: Spacing[5], gap: Spacing[2] },
-  tag: { paddingHorizontal: Spacing[3], paddingVertical: Spacing[1] + 1, borderRadius: Radii.full, backgroundColor: Colors.softGray },
-  tagOccasion: { backgroundColor: Colors.blushLight },
-  tagText: { fontFamily: Typography.fontBody, fontSize: Typography.xs, color: Colors.textSecondary, fontWeight: '500' },
-  productsSection: { paddingHorizontal: Spacing[5], paddingBottom: Spacing[5] },
-  sectionTitle: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '700', color: Colors.charcoal, marginBottom: Spacing[3] },
-  productRow: { flexDirection: 'row', gap: Spacing[3], marginBottom: Spacing[3], alignItems: 'center' },
-  productThumb: { width: 56, height: 56, borderRadius: Radii.md, backgroundColor: Colors.softGray },
-  productInfo: { flex: 1 },
-  productName: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '600', color: Colors.charcoal },
-  productBrand: { fontFamily: Typography.fontBody, fontSize: Typography.xs, color: Colors.textSecondary },
-  productPrice: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '700', color: Colors.charcoal, marginTop: 2 },
-  commentsSection: { paddingHorizontal: Spacing[5], paddingBottom: Spacing[5] },
-  noComments: { fontFamily: Typography.fontBody, fontSize: Typography.sm, color: Colors.textSecondary, marginTop: Spacing[3] },
-  commentItem: { flexDirection: 'row', gap: Spacing[3], marginBottom: Spacing[4] },
-  commentAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.softGray },
-  commentContent: { flex: 1 },
-  commentAuthor: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '700', color: Colors.charcoal },
-  commentText: { fontFamily: Typography.fontBody, fontSize: Typography.sm, color: Colors.charcoal, lineHeight: Typography.sm * 1.5 },
-  commentTime: { fontFamily: Typography.fontBody, fontSize: Typography.xs, color: Colors.textTertiary, marginTop: 2 },
-  commentInputWrap: {
+  authorLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing[3],
+    flex: 1,
+  },
+  avatarBorderRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
+  },
+  avatar: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+    backgroundColor: Colors.softGray,
+  },
+  avatarFallback: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+    backgroundColor: Colors.charcoal,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarFallbackText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    fontWeight: '700',
+    color: Colors.warmWhite,
+  },
+  creatorNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  displayName: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm + 1,
+    fontWeight: '700',
+    color: Colors.charcoal,
+  },
+  goldStar: {
+    fontSize: 10,
+    color: Colors.gold,
+  },
+  username: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  tierPill: {
+    backgroundColor: Colors.goldDust,
+    paddingHorizontal: Spacing[2] + 2,
+    paddingVertical: 3,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+  },
+  tierPillText: {
+    fontFamily: Typography.fontBody,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: Colors.textGold,
+  },
+
+  // ─── Media Carousel ────────────────────────────────────────
+  mediaContainer: {
+    position: 'relative',
+    backgroundColor: Colors.softGray,
+  },
+  mainImage: {
+    width: SW,
+    backgroundColor: Colors.softGray,
+  },
+  counterBadge: {
+    position: 'absolute',
+    top: Spacing[3],
+    right: Spacing[4],
+    backgroundColor: 'rgba(10,10,12,0.7)',
+    paddingHorizontal: Spacing[2] + 2,
+    paddingVertical: 3,
+    borderRadius: Radii.full,
+  },
+  counterText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs - 1,
+    fontWeight: '700',
+    color: Colors.warmWhite,
+    letterSpacing: 1,
+  },
+  inspectBadge: {
+    position: 'absolute',
+    top: Spacing[3],
+    left: Spacing[4],
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(10,10,12,0.7)',
+    paddingHorizontal: Spacing[2] + 4,
+    paddingVertical: 4,
+    borderRadius: Radii.full,
+    zIndex: 5,
+  },
+  inspectBadgeText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs - 2,
+    fontWeight: '800',
+    color: Colors.warmWhite,
+    letterSpacing: 1,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: Spacing[3],
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.midGray,
+  },
+  dotActive: {
+    backgroundColor: Colors.charcoal,
+    width: 18,
+    borderRadius: 3,
+  },
+
+  // ─── Actions Row ───────────────────────────────────────────
+  actionSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing[5],
+    paddingVertical: Spacing[2],
+  },
+  actionLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[5],
+  },
+  iconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  actionCount: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    fontWeight: '700',
+    color: Colors.charcoal,
+  },
+  actionCountLiked: {
+    color: Colors.likeActive,
+  },
+
+  // ─── Caption Section ───────────────────────────────────────
+  captionSection: {
+    paddingHorizontal: Spacing[5],
+    paddingTop: Spacing[2],
+    paddingBottom: Spacing[3],
+  },
+  captionUser: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    fontWeight: '800',
+    color: Colors.charcoal,
+    marginBottom: 2,
+  },
+  captionText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm + 1,
+    color: Colors.charcoal,
+    lineHeight: (Typography.sm + 1) * 1.5,
+  },
+
+  // ─── Tags ──────────────────────────────────────────────────
+  tagsContainer: {
+    paddingVertical: Spacing[2],
+  },
+  tagsScroll: {
+    paddingHorizontal: Spacing[5],
     gap: Spacing[2],
+  },
+  goldTag: {
+    backgroundColor: Colors.goldDust,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: 5,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+  },
+  goldTagText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    fontWeight: '700',
+    color: Colors.textGold,
+  },
+  occasionTag: {
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: 5,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  occasionTagText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+
+  // ─── Products ──────────────────────────────────────────────
+  productsSection: {
+    paddingHorizontal: Spacing[5],
+    paddingTop: Spacing[5],
+    paddingBottom: Spacing[3],
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing[3],
+  },
+  sectionHeaderTitle: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs - 1,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: Colors.textSecondary,
+  },
+  productBadge: {
+    backgroundColor: Colors.softGray,
+    paddingHorizontal: Spacing[2],
+    paddingVertical: 2,
+    borderRadius: Radii.sm,
+  },
+  productBadgeText: {
+    fontFamily: Typography.fontBody,
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  productCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: Radii.xl,
+    padding: Spacing[3],
+    marginBottom: Spacing[2],
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    ...Shadows.sm,
+  },
+  productThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: Radii.md,
+    backgroundColor: Colors.softGray,
+  },
+  productThumbFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: Radii.md,
+    backgroundColor: Colors.softGray,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  productInfo: {
+    flex: 1,
+    marginLeft: Spacing[3],
+  },
+  productName: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    fontWeight: '700',
+    color: Colors.charcoal,
+  },
+  productBrand: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  pricePill: {
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: 4,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  priceText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    color: Colors.charcoal,
+  },
+
+  // ─── Comments ──────────────────────────────────────────────
+  commentsSection: {
+    paddingHorizontal: Spacing[5],
+    paddingTop: Spacing[5],
+  },
+  commentCountBadge: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  noCommentsWrap: {
+    alignItems: 'center',
+    paddingVertical: Spacing[6],
+    gap: Spacing[2],
+  },
+  noCommentsIcon: {
+    fontSize: 18,
+    color: Colors.gold,
+  },
+  noComments: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  commentItem: {
+    flexDirection: 'row',
+    gap: Spacing[3],
+    marginBottom: Spacing[4],
+  },
+  commentAvatarWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  commentAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+  commentAvatarFallback: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.charcoal,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentAvatarInitial: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    fontWeight: '700',
+    color: Colors.warmWhite,
+  },
+  commentContent: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: Spacing[2],
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  commentMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  commentAuthor: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    color: Colors.charcoal,
+  },
+  commentTime: {
+    fontFamily: Typography.fontBody,
+    fontSize: 10,
+    color: Colors.textTertiary,
+  },
+  commentText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    color: Colors.charcoal,
+    lineHeight: Typography.sm * 1.45,
+  },
+
+  // ─── Comment Input Bar ─────────────────────────────────────
+  commentInputBar: {
     paddingHorizontal: Spacing[4],
     paddingTop: Spacing[2],
     borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
     backgroundColor: Colors.warmWhite,
   },
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingLeft: Spacing[4],
+    paddingRight: Spacing[1],
+    paddingVertical: Spacing[1],
+    ...Shadows.sm,
+  },
   commentInput: {
     flex: 1,
-    height: 40,
-    backgroundColor: Colors.softGray,
-    borderRadius: Radii.full,
-    paddingHorizontal: Spacing[4],
     fontFamily: Typography.fontBody,
     fontSize: Typography.sm,
     color: Colors.charcoal,
+    paddingVertical: Platform.OS === 'ios' ? Spacing[2] : Spacing[1],
   },
-  sendBtn: {
+  sendCircleBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Colors.charcoal,
-    borderRadius: Radii.full,
-    paddingHorizontal: Spacing[4],
-    height: 40,
+    alignItems: 'center',
     justifyContent: 'center',
+    ...Shadows.sm,
   },
-  sendBtnText: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '600', color: Colors.warmWhite },
+  sendBtnDisabled: {
+    backgroundColor: Colors.midGray,
+    opacity: 0.5,
+  },
 });

@@ -1,6 +1,6 @@
 // ============================================================
-// Collection Detail Screen — /collection/[id]
-// View saved outfits in a curated board
+// Collection Detail Screen — Tavallin Luxury Curated Moodboard
+// View saved outfits in a curated wardrobe capsule
 // ============================================================
 
 import React from 'react';
@@ -16,7 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { Colors, Typography, Spacing, Radii } from '../../src/design/tokens';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, Typography, Spacing, Radii, Shadows } from '../../src/design/tokens';
 import { useCollection, type CollectionOutfitItem } from '../../src/hooks/useCollections';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -33,12 +34,12 @@ export default function CollectionDetailScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconCircleBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={18} color={Colors.charcoal} />
           </TouchableOpacity>
         </View>
         <View style={styles.center}>
-          <ActivityIndicator color={Colors.midGray} />
+          <ActivityIndicator color={Colors.charcoal} />
         </View>
       </SafeAreaView>
     );
@@ -48,12 +49,13 @@ export default function CollectionDetailScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconCircleBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={18} color={Colors.charcoal} />
           </TouchableOpacity>
         </View>
         <View style={styles.center}>
-          <Text style={styles.emptyTitle}>Collection not found</Text>
+          <Text style={styles.emptyTitle}>Moodboard Not Found</Text>
+          <Text style={styles.emptySub}>This collection may have been removed or is no longer accessible.</Text>
         </View>
       </SafeAreaView>
     );
@@ -71,23 +73,28 @@ export default function CollectionDetailScreen() {
         activeOpacity={0.88}
         onPress={() => router.push(`/outfit/${item.id}`)}
       >
-        <Image
-          source={imageUri ? { uri: imageUri } : null}
-          style={styles.cardImage}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={150}
-        />
-        <View style={styles.cardMeta}>
-          <Text style={styles.authorName} numberOfLines={1}>
-            @{item.author.username}
-          </Text>
-          {item.caption ? (
-            <Text style={styles.caption} numberOfLines={1}>
+        <View style={styles.cardImageContainer}>
+          <Image
+            source={imageUri ? { uri: imageUri } : null}
+            style={styles.cardImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={150}
+          />
+          <View style={styles.cardImageOverlay} />
+          <View style={styles.authorBadge}>
+            <Text style={styles.authorName} numberOfLines={1}>
+              @{item.author.username}
+            </Text>
+          </View>
+        </View>
+        {item.caption ? (
+          <View style={styles.cardMeta}>
+            <Text style={styles.caption} numberOfLines={2}>
               {item.caption}
             </Text>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
       </TouchableOpacity>
     );
   };
@@ -96,13 +103,18 @@ export default function CollectionDetailScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Top Header */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>←</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.iconCircleBtn} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={18} color={Colors.charcoal} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {collection.name}
-        </Text>
-        <View style={{ width: 32 }} />
+
+        <View style={styles.headerCenter}>
+          <Text style={styles.topBarEyebrow}>✦ MOODBOARD</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {collection.name}
+          </Text>
+        </View>
+
+        <View style={{ width: 36 }} />
       </View>
 
       <FlatList
@@ -113,38 +125,52 @@ export default function CollectionDetailScreen() {
         contentContainerStyle={styles.listContent}
         columnWrapperStyle={styles.colWrapper}
         ListHeaderComponent={
-          <View style={styles.collectionHeader}>
+          <View style={styles.heroCard}>
+            <View style={styles.heroBadgeRow}>
+              <View style={styles.goldPill}>
+                <Text style={styles.goldPillText}>✦ WARDROBE CAPSULE</Text>
+              </View>
+              <View style={styles.statusPill}>
+                <Text style={styles.statusPillText}>
+                  {collection.isPublic ? 'PUBLIC' : 'PRIVATE'}
+                </Text>
+              </View>
+            </View>
+
             <Text style={styles.collectionTitle}>{collection.name}</Text>
+
             {collection.description ? (
               <Text style={styles.collectionDesc}>{collection.description}</Text>
             ) : null}
+
             <View style={styles.statsRow}>
+              <Ionicons name="layers-outline" size={14} color={Colors.textGold} />
               <Text style={styles.statsText}>
-                {outfits.length} {outfits.length === 1 ? 'item' : 'items'}
-              </Text>
-              <Text style={styles.dot}>·</Text>
-              <Text style={styles.statsText}>
-                {collection.isPublic ? 'Public Board' : 'Private Board'}
+                {outfits.length} {outfits.length === 1 ? 'Look Curated' : 'Looks Curated'}
               </Text>
             </View>
           </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>⊡</Text>
-            <Text style={styles.emptyTitle}>No saved outfits yet</Text>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="bookmark-outline" size={32} color={Colors.gold} />
+            </View>
+            <Text style={styles.emptyTitle}>Moodboard is Empty</Text>
             <Text style={styles.emptySub}>
-              Tap the save bookmark on any outfit to collect it here.
+              Tap the bookmark save icon on any outfit in the feed to archive it in this capsule.
             </Text>
             <TouchableOpacity
               style={styles.exploreBtn}
               onPress={() => router.push('/(tabs)/explore')}
-              activeOpacity={0.8}
+              activeOpacity={0.88}
             >
               <Text style={styles.exploreBtnText}>Discover Outfits</Text>
+              <Ionicons name="arrow-forward" size={15} color={Colors.warmWhite} />
             </TouchableOpacity>
           </View>
         }
+        showsVerticalScrollIndicator={false}
       />
     </SafeAreaView>
   );
@@ -160,40 +186,94 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing[4],
-    paddingVertical: Spacing[3],
+    paddingVertical: Spacing[2],
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
+    backgroundColor: Colors.warmWhite,
   },
-  backBtn: {
-    padding: Spacing[2],
+  iconCircleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  backText: {
-    fontSize: 20,
-    color: Colors.charcoal,
-    fontWeight: '300',
+  headerCenter: {
+    alignItems: 'center',
+    maxWidth: SCREEN_WIDTH * 0.6,
+  },
+  topBarEyebrow: {
+    fontFamily: Typography.fontBody,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: Colors.textGold,
   },
   headerTitle: {
     fontFamily: Typography.fontBody,
-    fontSize: Typography.base,
-    fontWeight: '600',
+    fontSize: Typography.xs + 1,
+    fontWeight: '800',
+    letterSpacing: 1,
     color: Colors.charcoal,
-    maxWidth: 240,
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: Spacing[6],
   },
-  collectionHeader: {
-    paddingVertical: Spacing[5],
-    paddingHorizontal: Spacing[1],
+  heroCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radii['2xl'],
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+    padding: Spacing[5],
+    marginTop: Spacing[4],
+    marginBottom: Spacing[5],
+    ...Shadows.sm,
+  },
+  heroBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
     marginBottom: Spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
+  },
+  goldPill: {
+    backgroundColor: Colors.goldDust,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: 3,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+  },
+  goldPillText: {
+    fontFamily: Typography.fontBody,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: Colors.textGold,
+  },
+  statusPill: {
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: Spacing[2] + 2,
+    paddingVertical: 3,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  statusPillText: {
+    fontFamily: Typography.fontBody,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: Colors.textSecondary,
   },
   collectionTitle: {
     fontFamily: Typography.fontDisplay,
-    fontSize: Typography['2xl'],
+    fontSize: Typography['3xl'],
     color: Colors.charcoal,
     marginBottom: Spacing[2],
   },
@@ -201,23 +281,20 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontBody,
     fontSize: Typography.sm,
     color: Colors.textSecondary,
-    marginBottom: Spacing[3],
-    lineHeight: 20,
+    lineHeight: Typography.sm * 1.55,
+    marginBottom: Spacing[4],
   },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing[2],
   },
   statsText: {
     fontFamily: Typography.fontBody,
     fontSize: Typography.xs,
-    color: Colors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  dot: {
-    marginHorizontal: Spacing[2],
-    color: Colors.textTertiary,
+    color: Colors.charcoal,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   listContent: {
     paddingHorizontal: Spacing[4],
@@ -230,43 +307,73 @@ const styles = StyleSheet.create({
   card: {
     width: ITEM_WIDTH,
     backgroundColor: Colors.surface,
-    borderRadius: Radii.md,
+    borderRadius: Radii.xl,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.borderLight,
+    ...Shadows.sm,
+  },
+  cardImageContainer: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: 0.78,
+    backgroundColor: Colors.softGray,
   },
   cardImage: {
     width: '100%',
-    aspectRatio: 0.75,
-    backgroundColor: Colors.softGray,
+    height: '100%',
   },
-  cardMeta: {
-    padding: Spacing[2],
+  cardImageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 48,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  authorBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(10,10,12,0.7)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: Radii.full,
   },
   authorName: {
     fontFamily: Typography.fontBody,
-    fontSize: Typography.xs,
-    fontWeight: '600',
-    color: Colors.charcoal,
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.warmWhite,
+  },
+  cardMeta: {
+    padding: Spacing[2] + 2,
   },
   caption: {
     fontFamily: Typography.fontBody,
-    fontSize: 10,
-    color: Colors.textSecondary,
-    marginTop: 2,
+    fontSize: Typography.xs,
+    color: Colors.charcoal,
+    lineHeight: Typography.xs * 1.4,
   },
   emptyContainer: {
-    paddingTop: Spacing[12],
+    paddingTop: Spacing[10],
     alignItems: 'center',
+    paddingHorizontal: Spacing[4],
   },
-  emptyIcon: {
-    fontSize: 48,
-    color: Colors.midGray,
-    marginBottom: Spacing[4],
+  emptyIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.goldDust,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing[3],
   },
   emptyTitle: {
     fontFamily: Typography.fontDisplay,
-    fontSize: Typography.xl,
+    fontSize: Typography['2xl'],
     color: Colors.charcoal,
     marginBottom: Spacing[2],
   },
@@ -275,19 +382,24 @@ const styles = StyleSheet.create({
     fontSize: Typography.sm,
     color: Colors.textSecondary,
     textAlign: 'center',
-    maxWidth: 260,
+    maxWidth: 280,
     marginBottom: Spacing[6],
+    lineHeight: Typography.sm * 1.5,
   },
   exploreBtn: {
     backgroundColor: Colors.charcoal,
     paddingHorizontal: Spacing[6],
     paddingVertical: Spacing[3],
     borderRadius: Radii.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
+    ...Shadows.sm,
   },
   exploreBtnText: {
     fontFamily: Typography.fontBody,
     fontSize: Typography.sm,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.warmWhite,
   },
 });

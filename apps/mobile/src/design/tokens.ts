@@ -1,72 +1,98 @@
 // ============================================================
-// Tavallin Design Tokens
+// Tavallin Design Tokens — Luxury Haute-Couture Edition
 // Single source of truth for colors, typography, spacing
 // ============================================================
 
 export const Colors = {
-  // ─── Primary Palette ─────────────────────────────────────
-  charcoal: '#1A1A1A',
-  warmWhite: '#FAF9F7',
-  softGray: '#F2F0EE',
-  midGray: '#C8C5C0',
-  darkGray: '#6B6860',
+  // ─── Core Palette ─────────────────────────────────────────
+  obsidian: '#0A0A0C',       // deepest black
+  charcoal: '#1C1C1E',       // primary dark
+  ink: '#2C2C2E',            // secondary dark
+  warmWhite: '#FAF8F5',      // primary background
+  cream: '#F5F0E8',          // warm cream
+  softGray: '#F0EDE8',       // light surface
+  midGray: '#C4BEB6',        // mid tone
+  darkGray: '#6E6860',       // secondary text
 
-  // ─── Accent ──────────────────────────────────────────────
-  blush: '#E8D5C4',
-  blushLight: '#F5EDE5',
-  sage: '#C4D4C8',
+  // ─── Gold & Luxury Accents ───────────────────────────────
+  gold: '#C9A84C',           // primary gold
+  goldBright: '#E2B84A',     // bright gold
+  goldLight: '#F0DCA0',      // light gold
+  goldMuted: '#A88A45',      // muted gold
+  goldDust: 'rgba(201,168,76,0.15)', // gold overlay
+
+  // ─── Champagne & Warm Tones ──────────────────────────────
+  champagne: '#EFD9B4',
+  blush: '#E8D0BC',
+  blushLight: '#F5EAE0',
+  rose: '#D4A0A0',
+
+  // ─── Glass & Overlay ─────────────────────────────────────
+  glassLight: 'rgba(250,248,245,0.90)',
+  glassMid: 'rgba(250,248,245,0.75)',
+  glassDark: 'rgba(10,10,12,0.82)',
+  glassGold: 'rgba(201,168,76,0.12)',
+  backdropBlur: 'rgba(0,0,0,0.55)',
+  glassBorder: 'rgba(255,255,255,0.18)',
+  glassBorderDark: 'rgba(255,255,255,0.07)',
 
   // ─── Semantic ────────────────────────────────────────────
-  background: '#FAF9F7',
+  background: '#FAF8F5',
   surface: '#FFFFFF',
-  surfaceElevated: '#F8F6F4',
-  border: '#E8E5E0',
-  borderLight: '#F0EDE9',
+  surfaceElevated: '#F7F4EF',
+  surfaceCard: '#FEFCF9',
+  border: '#E5E0D8',
+  borderLight: '#EDEBE6',
+  borderGold: 'rgba(201,168,76,0.35)',
 
   // ─── Text ────────────────────────────────────────────────
-  textPrimary: '#1A1A1A',
-  textSecondary: '#6B6860',
-  textTertiary: '#A09A94',
-  textInverse: '#FFFFFF',
-  textPlaceholder: '#B8B3AE',
+  textPrimary: '#1C1C1E',
+  textSecondary: '#6E6860',
+  textTertiary: '#A09890',
+  textInverse: '#FEFEFE',
+  textGold: '#B8902C',
+  textPlaceholder: '#B8B0A6',
 
   // ─── Interactive ─────────────────────────────────────────
-  interactive: '#1A1A1A',
-  interactiveHover: '#2D2D2D',
-  interactiveDisabled: '#C8C5C0',
+  interactive: '#1C1C1E',
+  interactiveHover: '#2D2D30',
+  interactiveDisabled: '#C4BEB6',
 
   // ─── Feedback ────────────────────────────────────────────
-  success: '#4CAF50',
+  success: '#2E7D32',
   successLight: '#E8F5E9',
-  error: '#E53935',
+  error: '#C62828',
   errorLight: '#FFEBEE',
-  warning: '#FF8F00',
-  warningLight: '#FFF8E1',
-  info: '#1976D2',
-  infoLight: '#E3F2FD',
+  warning: '#E65100',
+  warningLight: '#FFF3E0',
+  info: '#01579B',
+  infoLight: '#E1F5FE',
 
   // ─── Social ──────────────────────────────────────────────
-  likeActive: '#E53935',
-  likeInactive: '#1A1A1A',
-  saveActive: '#1A1A1A',
+  likeActive: '#C62828',
+  likeInactive: '#1C1C1E',
+  saveActive: '#C9A84C',
+  saveInactive: '#1C1C1E',
 
-  // ─── Dark Mode ───────────────────────────────────────────
+  // ─── Dark Theme ──────────────────────────────────────────
   dark: {
-    background: '#0F0F0F',
-    surface: '#1A1A1A',
-    surfaceElevated: '#242424',
-    border: '#2D2D2D',
-    textPrimary: '#F5F3F0',
-    textSecondary: '#A09A94',
+    background: '#0A0A0C',
+    surface: '#141416',
+    surfaceElevated: '#1C1C1E',
+    border: '#2C2C2E',
+    borderLight: '#242424',
+    textPrimary: '#FAF8F5',
+    textSecondary: '#A09890',
+    gold: '#D4AF62',
   },
 } as const;
 
 export const Typography = {
   // Font families (loaded via expo-font)
-  fontDisplay: 'CormorantGaramond',
-  fontBody: 'Inter',
+  fontDisplay: 'CormorantGaramond',   // serif editorial
+  fontBody: 'Inter',                   // clean sans-serif
 
-  // Scale
+  // Type Scale
   xs: 11,
   sm: 13,
   base: 15,
@@ -76,17 +102,21 @@ export const Typography = {
   '2xl': 26,
   '3xl': 32,
   '4xl': 40,
+  '5xl': 52,
 
-  // Line heights
-  lineHeightTight: 1.2,
+  // Line Heights
+  lineHeightTight: 1.15,
   lineHeightBase: 1.5,
   lineHeightRelaxed: 1.7,
+  lineHeightLoose: 2.0,
 
-  // Letter spacing
+  // Letter Spacing
   letterSpacingTight: -0.5,
   letterSpacingBase: 0,
   letterSpacingWide: 0.5,
   letterSpacingXWide: 1.2,
+  letterSpacingUltra: 2.5,
+  letterSpacingMega: 4.0,
 } as const;
 
 export const Spacing = {
@@ -105,15 +135,18 @@ export const Spacing = {
   14: 56,
   16: 64,
   20: 80,
+  24: 96,
 } as const;
 
 export const Radii = {
   none: 0,
-  sm: 4,
-  md: 8,
-  lg: 12,
-  xl: 16,
-  '2xl': 20,
+  xs: 2,
+  sm: 6,
+  md: 10,
+  lg: 14,
+  xl: 18,
+  '2xl': 24,
+  '3xl': 32,
   full: 9999,
 } as const;
 
@@ -125,32 +158,54 @@ export const Shadows = {
     shadowRadius: 0,
     elevation: 0,
   },
-  sm: {
-    shadowColor: '#1A1A1A',
+  xs: {
+    shadowColor: '#1C1C1E',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowRadius: 3,
     elevation: 1,
   },
-  md: {
-    shadowColor: '#1A1A1A',
+  sm: {
+    shadowColor: '#1C1C1E',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  lg: {
-    shadowColor: '#1A1A1A',
+  md: {
+    shadowColor: '#1C1C1E',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 16,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  lg: {
+    shadowColor: '#1C1C1E',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  xl: {
+    shadowColor: '#0A0A0C',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.14,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  gold: {
+    shadowColor: '#C9A84C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
     elevation: 6,
   },
 } as const;
 
 export const Timing = {
-  fast: 150,
-  base: 250,
-  slow: 400,
-  verySlow: 600,
+  instant: 100,
+  fast: 180,
+  base: 280,
+  slow: 420,
+  verySlow: 640,
 } as const;

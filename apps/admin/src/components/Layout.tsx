@@ -46,35 +46,29 @@ export const Layout: React.FC = () => {
         {/* Brand Header */}
         <div style={{ padding: '24px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div
+            <img
+              src="/ootdi-logo.png"
+              alt="OOTDi"
               style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, #D4AF37 0%, #8C6239 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#0C0D12',
-                fontWeight: 800,
-                fontSize: '16px',
-                letterSpacing: '1px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                objectFit: 'cover',
               }}
-            >
-              T
-            </div>
+            />
             <div>
               <h1
                 style={{
                   fontFamily: 'var(--font-display)',
-                  fontSize: '20px',
-                  fontWeight: 600,
-                  letterSpacing: '2px',
-                  lineHeight: 1,
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  letterSpacing: '1.5px',
+                  lineHeight: 1.1,
                   color: '#FFFFFF',
+                  margin: 0,
                 }}
               >
-                TAVALLIN
+                OOTDi
               </h1>
               <span
                 style={{
@@ -83,6 +77,8 @@ export const Layout: React.FC = () => {
                   fontWeight: 700,
                   color: 'var(--accent-gold)',
                   textTransform: 'uppercase',
+                  display: 'block',
+                  marginTop: '2px',
                 }}
               >
                 Ops Console

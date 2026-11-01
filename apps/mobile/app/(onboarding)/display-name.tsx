@@ -50,9 +50,9 @@ export default function DisplayNameScreen() {
         >
           {/* Progress Header */}
           <View style={styles.header}>
-            <Text style={styles.stepIndicator}>STEP 1 OF 5</Text>
+            <Text style={styles.stepIndicator}>STEP 1 OF 4</Text>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '20%' }]} />
+              <View style={[styles.progressFill, { width: '25%' }]} />
             </View>
           </View>
 

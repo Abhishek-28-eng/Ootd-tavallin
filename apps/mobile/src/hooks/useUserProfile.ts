@@ -59,8 +59,30 @@ export function useToggleFollow(username: string) {
         return res.data.data;
       }
     },
-    onSuccess: () => {
+    onMutate: async (currentlyFollowing: boolean) => {
+      await qc.cancelQueries({ queryKey: ['profile', username] });
+      const previous = qc.getQueryData<UserPublicProfile>(['profile', username]);
+      if (previous) {
+        qc.setQueryData<UserPublicProfile>(['profile', username], {
+          ...previous,
+          isFollowing: !currentlyFollowing,
+          followersCount: currentlyFollowing
+            ? Math.max(0, (previous.followersCount ?? 1) - 1)
+            : (previous.followersCount ?? 0) + 1,
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        qc.setQueryData(['profile', username], context.previous);
+      }
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['profile', username] });
+      void qc.invalidateQueries({ queryKey: ['feed'] });
+      void qc.invalidateQueries({ queryKey: ['following', username] });
+      void qc.invalidateQueries({ queryKey: ['followers', username] });
     },
   });
 }
@@ -86,3 +108,53 @@ export function useFollowing(username: string) {
     enabled: !!username,
   });
 }
+
+export interface FeaturedCurator {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  location: string | null;
+  bio: string | null;
+  roleBadge: string;
+  styleSignature: string;
+  followersCount: number;
+  postsCount: number;
+  latestLookThumbnail: string | null;
+}
+
+export interface StoryCurator {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  initials: string;
+  hasActiveFit: boolean;
+}
+
+export function useFeaturedCurators(limit = 10) {
+  return useQuery({
+    queryKey: ['featuredCurators', limit],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<FeaturedCurator[]>>('/users/curators/featured', {
+        params: { limit },
+      });
+      return res.data.data ?? [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useStoryCurators(limit = 12) {
+  return useQuery({
+    queryKey: ['storyCurators', limit],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<StoryCurator[]>>('/users/stories', {
+        params: { limit },
+      });
+      return res.data.data ?? [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+}
+

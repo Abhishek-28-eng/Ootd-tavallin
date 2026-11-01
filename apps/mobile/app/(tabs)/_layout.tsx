@@ -1,12 +1,69 @@
-import { Tabs, Redirect } from 'expo-router';
-import { View, StyleSheet, Text } from 'react-native';
-import { useAuthStore } from '../../src/stores/authStore';
-import { Colors, Typography } from '../../src/design/tokens';
+// ============================================================
+// Tab Navigator Layout — Tavallin Premium Navigation
+// ============================================================
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
+import { Tabs, Redirect } from 'expo-router';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '../../src/stores/authStore';
+import { Colors, Typography, Shadows } from '../../src/design/tokens';
+
+function HomeIcon({ focused }: { focused: boolean }) {
   return (
-    <View style={[styles.tabIconWrap, focused && styles.tabIconFocused]}>
-      <Text style={[styles.tabLabel, focused && styles.tabLabelFocused]}>{label}</Text>
+    <View style={styles.iconWrap}>
+      <Ionicons
+        name={focused ? 'home' : 'home-outline'}
+        size={21}
+        color={focused ? Colors.charcoal : '#8E8E93'}
+      />
+      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>HOME</Text>
+    </View>
+  );
+}
+
+function ExploreIcon({ focused }: { focused: boolean }) {
+  return (
+    <View style={styles.iconWrap}>
+      <Ionicons
+        name={focused ? 'compass' : 'compass-outline'}
+        size={21}
+        color={focused ? Colors.charcoal : '#8E8E93'}
+      />
+      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>EXPLORE</Text>
+    </View>
+  );
+}
+
+function CreateIcon() {
+  return (
+    <View style={styles.createBtn}>
+      <Ionicons name="add" size={24} color="#FAF8F5" />
+    </View>
+  );
+}
+
+function SavedIcon({ focused }: { focused: boolean }) {
+  return (
+    <View style={styles.iconWrap}>
+      <Ionicons
+        name={focused ? 'bookmark' : 'bookmark-outline'}
+        size={20}
+        color={focused ? Colors.charcoal : '#8E8E93'}
+      />
+      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>SAVED</Text>
+    </View>
+  );
+}
+
+function ProfileIcon({ focused }: { focused: boolean }) {
+  return (
+    <View style={styles.iconWrap}>
+      <Ionicons
+        name={focused ? 'person' : 'person-outline'}
+        size={20}
+        color={focused ? Colors.charcoal : '#8E8E93'}
+      />
+      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>PROFILE</Text>
     </View>
   );
 }
@@ -26,45 +83,48 @@ export default function TabLayout() {
         tabBarStyle: styles.tabBar,
         tabBarActiveTintColor: Colors.charcoal,
         tabBarInactiveTintColor: Colors.midGray,
+        tabBarHideOnKeyboard: true,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon label="HOME" focused={focused} />,
+          tabBarIcon: ({ focused }) => <HomeIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
           title: 'Explore',
-          tabBarIcon: ({ focused }) => <TabIcon label="EXPLORE" focused={focused} />,
+          tabBarIcon: ({ focused }) => <ExploreIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="create"
         options={{
           title: 'Create',
-          tabBarIcon: () => (
-            <View style={styles.createButton}>
-              <Text style={styles.createPlus}>+</Text>
-            </View>
-          ),
+          tabBarIcon: () => <CreateIcon />,
         }}
       />
       <Tabs.Screen
-        name="notifications"
+        name="saved"
         options={{
-          title: 'Notifications',
-          tabBarIcon: ({ focused }) => <TabIcon label="NOTIF" focused={focused} />,
+          title: 'Saved',
+          tabBarIcon: ({ focused }) => <SavedIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ focused }) => <TabIcon label="ME" focused={focused} />,
+          tabBarIcon: ({ focused }) => <ProfileIcon focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          href: null,
         }}
       />
     </Tabs>
@@ -73,44 +133,46 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: Colors.warmWhite,
+    backgroundColor: '#FAF8F5',
     borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-    height: 60,
-    paddingBottom: 8,
+    borderTopColor: '#EDE8E0',
+    height: Platform.OS === 'ios' ? 84 : 64,
+    paddingBottom: Platform.OS === 'ios' ? 26 : 8,
     paddingTop: 8,
-    elevation: 0,
-    shadowOpacity: 0,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
   },
-  tabIconWrap: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  iconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
   },
-  tabIconFocused: {},
   tabLabel: {
     fontFamily: Typography.fontBody,
     fontSize: 9,
-    fontWeight: '500',
-    color: Colors.midGray,
-    letterSpacing: 1,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    color: '#8E8E93',
   },
-  tabLabelFocused: {
+  tabLabelActive: {
+    fontWeight: '800',
     color: Colors.charcoal,
-    fontWeight: '700',
   },
-  createButton: {
+  createBtn: {
     width: 44,
     height: 44,
-    backgroundColor: Colors.charcoal,
     borderRadius: 22,
+    backgroundColor: Colors.charcoal,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
-  },
-  createPlus: {
-    fontSize: 26,
-    color: Colors.warmWhite,
-    lineHeight: 28,
-    fontWeight: '300',
+    marginTop: -2,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
   },
 });

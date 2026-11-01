@@ -63,6 +63,14 @@ outfitsRouter.post(
           body.tags = [body.tags];
         }
       }
+      if (typeof body.products === 'string') {
+        try {
+          const parsed = JSON.parse(body.products);
+          body.products = Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          body.products = [];
+        }
+      }
       if (typeof body.budgetMin === 'string' && body.budgetMin.trim() !== '') {
         body.budgetMin = Number(body.budgetMin);
       }
@@ -105,9 +113,16 @@ outfitsRouter.post(
 // ─── Feed ────────────────────────────────────────────────────────────────────
 outfitsRouter.get('/feed', requireAuth, validate(FeedQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const { type, cursor, limit } = req.query as { type?: 'personalized' | 'following' | 'trending' | 'latest'; cursor?: string; limit?: string };
+    const { type, cursor, limit, refresh } = req.query as {
+      type?: 'personalized' | 'following' | 'trending' | 'latest';
+      cursor?: string;
+      limit?: string;
+      refresh?: string;
+    };
     const numLimit = Number(limit) || 20;
-    const posts = await outfitsService.getFeed(req.user!.id, type ?? 'personalized', cursor, numLimit + 1);
+    // refresh=true bypasses Redis cache so pull-to-refresh always returns latest posts
+    const bypassCache = refresh === 'true' || refresh === '1';
+    const posts = await outfitsService.getFeed(req.user!.id, type ?? 'personalized', cursor, numLimit + 1, bypassCache);
     const hasMore = posts.length > numLimit;
     const resultPosts = hasMore ? posts.slice(0, numLimit) : posts;
     const nextCursor = resultPosts.length ? resultPosts[resultPosts.length - 1]!.createdAt : null;
@@ -157,6 +172,40 @@ outfitsRouter.get('/explore', optionalAuthenticate, validate(ExploreQuerySchema,
         cursor: hasMore ? nextCursor : null,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── User Saved Outfits Archive ──────────────────────────────────────────────
+outfitsRouter.get('/saved', requireAuth, async (req, res, next) => {
+  try {
+    const numLimit = Number(req.query['limit']) || 20;
+    const posts = await outfitsService.getSavedOutfits(
+      req.user!.id,
+      req.query['cursor'] as string | undefined,
+      numLimit + 1,
+    );
+    const hasMore = posts.length > numLimit;
+    const resultPosts = hasMore ? posts.slice(0, numLimit) : posts;
+    const nextCursor = resultPosts.length ? resultPosts[resultPosts.length - 1]!.createdAt : null;
+    respond(res, 200, {
+      posts: resultPosts,
+      meta: {
+        hasMore,
+        cursor: hasMore ? nextCursor : null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Editorial Issue Spotlight & Realtime Index ──────────────────────────────
+outfitsRouter.get('/spotlight', optionalAuthenticate, async (_req, res, next) => {
+  try {
+    const spotlight = await outfitsService.getEditorialSpotlight();
+    respond(res, 200, spotlight);
   } catch (err) {
     next(err);
   }

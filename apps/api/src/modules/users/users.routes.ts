@@ -29,8 +29,10 @@ usersRouter.post('/me/avatar', requireAuth, uploadAvatar.single('avatar'), ctrl.
 usersRouter.patch('/me/preferences', requireAuth, validate(UpdatePreferencesSchema), ctrl.updatePreferences);
 usersRouter.post('/me/onboard', requireAuth, ctrl.completeOnboarding);
 
-// ─── Search ─────────────────────────────────────────────────────────────────
+// ─── Search & Discovery ──────────────────────────────────────────────────────
 usersRouter.get('/search', optionalAuthenticate, ctrl.searchUsers);
+usersRouter.get('/curators/featured', optionalAuthenticate, ctrl.getFeaturedCurators);
+usersRouter.get('/stories', optionalAuthenticate, ctrl.getStoryCurators);
 
 // ─── Public profile & social ────────────────────────────────────────────────
 usersRouter.get('/:username', optionalAuthenticate, ctrl.getProfile);

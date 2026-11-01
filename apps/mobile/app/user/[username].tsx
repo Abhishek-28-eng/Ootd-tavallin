@@ -1,6 +1,5 @@
 // ============================================================
-// User Profile Screen — /user/[username]
-// Public profile: avatar, stats, follow button, posts grid
+// User Profile Screen — Tavallin Luxury Public Curator Lookbook
 // ============================================================
 
 import React, { useCallback } from 'react';
@@ -12,18 +11,22 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Colors, Typography, Spacing, Radii } from '../../src/design/tokens';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { Colors, Typography, Spacing, Radii, Shadows } from '../../src/design/tokens';
 import { useUserProfile, useUserPosts, useToggleFollow } from '../../src/hooks/useUserProfile';
 import { useAuthStore } from '../../src/stores/authStore';
 import { GridSkeleton } from '../../src/components/Skeletons';
 import type { OutfitSummary } from '@tavallin/shared';
 
 const { width: SW } = Dimensions.get('window');
-const THUMB = (SW - 3) / 3;
+const COLS = 3;
+const GAP = 2;
+const THUMB_SIZE = (SW - GAP * (COLS - 1)) / COLS;
 
 function StatBlock({ label, value }: { label: string; value: number }) {
   return (
@@ -53,6 +56,16 @@ export default function UserProfileScreen() {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  const handleShareProfile = async () => {
+    try {
+      await Share.share({
+        message: `Discover @${username}'s curated lookbook and aesthetic formulas on OOTDi: https://ootdi.app/@${username}`,
+      });
+    } catch {
+      // Ignore
+    }
+  };
+
   const renderThumb = useCallback(
     ({ item }: { item: OutfitSummary }) => {
       const thumb =
@@ -60,6 +73,8 @@ export default function UserProfileScreen() {
         (item as any).media?.[0]?.thumbnailUrl ||
         (item as any).media?.[0]?.publicUrl ||
         (item as any).media?.[0]?.url;
+
+      const mediaCount = (item as any).media?.length ?? 1;
 
       return (
         <TouchableOpacity
@@ -74,6 +89,11 @@ export default function UserProfileScreen() {
             cachePolicy="memory-disk"
             transition={150}
           />
+          {mediaCount > 1 && (
+            <View style={styles.multiMediaBadge}>
+              <Ionicons name="copy-outline" size={10} color={Colors.warmWhite} />
+            </View>
+          )}
         </TouchableOpacity>
       );
     },
@@ -83,7 +103,14 @@ export default function UserProfileScreen() {
   if (profileLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.loading}><ActivityIndicator color={Colors.midGray} /></View>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconCircleBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={18} color={Colors.charcoal} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.loading}>
+          <ActivityIndicator color={Colors.charcoal} />
+        </View>
       </SafeAreaView>
     );
   }
@@ -91,75 +118,122 @@ export default function UserProfileScreen() {
   if (!profile) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconCircleBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={18} color={Colors.charcoal} />
+          </TouchableOpacity>
+        </View>
         <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>User not found</Text>
+          <Text style={styles.emptyTitle}>Curator Not Found</Text>
+          <Text style={styles.emptySubtitle}>The requested profile does not exist or has been archived.</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   const ListHeader = () => (
-    <View>
-      {/* Top bar */}
+    <View style={styles.headerContainer}>
+      {/* Top Bar */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>←</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.iconCircleBtn} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={18} color={Colors.charcoal} />
         </TouchableOpacity>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Text style={styles.headerUsername}>@{profile.username}</Text>
-          {profile.isPrivate && <Text style={{ fontSize: 13 }}>🔒</Text>}
+
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerUsername}>@{profile.username.toUpperCase()}</Text>
+          <View style={styles.curatorPill}>
+            <Text style={styles.curatorPillText}>✦ CURATOR</Text>
+          </View>
         </View>
-        <View style={{ width: 32 }} />
+
+        <TouchableOpacity onPress={handleShareProfile} style={styles.iconCircleBtn} activeOpacity={0.7}>
+          <Ionicons name="share-outline" size={18} color={Colors.charcoal} />
+        </TouchableOpacity>
       </View>
 
-      {/* Profile info */}
-      <View style={styles.profileRow}>
-        <Image
-          source={profile?.avatarUrl ? { uri: profile.avatarUrl } : null}
-          style={styles.avatar}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-        />
-        <View style={styles.statsRow}>
-          <StatBlock label="Posts" value={profile.postsCount} />
+      {/* Hero Avatar & Stats */}
+      <View style={styles.heroRow}>
+        <View style={styles.avatarRing}>
+          {profile?.avatarUrl ? (
+            <Image
+              source={{ uri: profile.avatarUrl }}
+              style={styles.avatar}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarInitial}>
+                {(profile.displayName || profile.username || 'U')[0]?.toUpperCase()}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.statsCard}>
+          <StatBlock label="Looks" value={profile.postsCount} />
+          <View style={styles.statDivider} />
           <StatBlock label="Followers" value={profile.followersCount} />
+          <View style={styles.statDivider} />
           <StatBlock label="Following" value={profile.followingCount} />
         </View>
       </View>
 
+      {/* Bio Section */}
       <View style={styles.bioSection}>
-        <Text style={styles.displayName}>{profile.displayName}</Text>
-        {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
-        {profile.location ? <Text style={styles.location}>📍 {profile.location}</Text> : null}
+        <View style={styles.nameRow}>
+          <Text style={styles.displayName}>{profile.displayName || profile.username}</Text>
+          <View style={styles.verifiedBadgeWrap}>
+            <Ionicons name="checkmark-circle" size={16} color={Colors.gold} />
+          </View>
+          {profile.isPrivate && (
+            <View style={styles.privatePill}>
+              <Ionicons name="lock-closed" size={11} color={Colors.textSecondary} />
+              <Text style={styles.privatePillText}>Private</Text>
+            </View>
+          )}
+        </View>
+
+        {profile.bio ? <Text style={styles.bioText}>{profile.bio}</Text> : null}
+
+        {profile.location ? (
+          <View style={styles.locationPill}>
+            <Ionicons name="location-outline" size={11} color={Colors.darkGray} />
+            <Text style={styles.locationText}>{profile.location}</Text>
+          </View>
+        ) : null}
       </View>
 
-      {/* Follow / message actions */}
+      {/* Follow / Actions Row */}
       {!isMe && (
-        <View style={styles.actionsRow}>
+        <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.followBtn, profile.isFollowing && styles.followingBtn]}
             onPress={() => toggleFollow(profile.isFollowing)}
             disabled={followPending}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
             {followPending ? (
               <ActivityIndicator color={profile.isFollowing ? Colors.charcoal : Colors.warmWhite} size="small" />
+            ) : profile.isFollowing ? (
+              <>
+                <Ionicons name="checkmark-sharp" size={16} color={Colors.gold} />
+                <Text style={styles.followingBtnText}>Following</Text>
+              </>
             ) : (
-              <Text style={[styles.followBtnText, profile.isFollowing && styles.followingBtnText]}>
-                {profile.isFollowing ? 'Following' : 'Follow'}
-              </Text>
+              <>
+                <Feather name="plus" size={16} color={Colors.warmWhite} />
+                <Text style={styles.followBtnText}>Follow Lookbook</Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Grid divider */}
-      <View style={styles.gridBar}>
+      {/* Section Divider */}
+      <View style={styles.gridSectionBar}>
         <View style={styles.gridBarLine} />
-        <Text style={styles.gridBarLabel}>POSTS</Text>
+        <Text style={styles.gridBarLabel}>CURATED LOOKS ({posts.length})</Text>
         <View style={styles.gridBarLine} />
       </View>
     </View>
@@ -171,31 +245,37 @@ export default function UserProfileScreen() {
         data={posts}
         keyExtractor={(item) => item.id}
         renderItem={renderThumb}
-        numColumns={3}
+        numColumns={COLS}
         columnWrapperStyle={styles.columnWrapper}
         ListHeaderComponent={<ListHeader />}
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
         ListFooterComponent={
-          postsLoading ? <GridSkeleton /> :
-          isFetchingNextPage ? <ActivityIndicator color={Colors.midGray} style={{ marginVertical: Spacing[4] }} /> : null
+          postsLoading ? (
+            <GridSkeleton />
+          ) : isFetchingNextPage ? (
+            <ActivityIndicator color={Colors.charcoal} style={{ marginVertical: Spacing[4] }} />
+          ) : null
         }
         ListEmptyComponent={
           !postsLoading ? (
             profile.isPrivate && !isMe && !profile.isFollowing ? (
               <View style={styles.privateWrap}>
                 <View style={styles.lockCircle}>
-                  <Text style={styles.lockIcon}>🔒</Text>
+                  <Ionicons name="lock-closed" size={28} color={Colors.gold} />
                 </View>
-                <Text style={styles.privateTitle}>This Account is Private</Text>
+                <Text style={styles.privateTitle}>Private Wardrobe Archive</Text>
                 <Text style={styles.privateSubtitle}>
-                  Follow @{profile.username} to view their curated looks and moodboards.
+                  Follow @{profile.username} to view their full outfit entries and curated moodboards.
                 </Text>
               </View>
             ) : (
               <View style={styles.empty}>
-                <Text style={styles.emptyIcon}>◻</Text>
-                <Text style={styles.emptyTitle}>No posts yet</Text>
+                <View style={styles.emptyIconWrap}>
+                  <Text style={styles.emptyIcon}>✦</Text>
+                </View>
+                <Text style={styles.emptyTitle}>No Outfits Yet</Text>
+                <Text style={styles.emptySubtitle}>This curator hasn't shared any looks to their digital closet yet.</Text>
               </View>
             )
           ) : null
@@ -207,86 +287,277 @@ export default function UserProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.warmWhite },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  backBtn: { padding: Spacing[5] },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.warmWhite,
+  },
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerContainer: {
+    backgroundColor: Colors.warmWhite,
+    paddingBottom: Spacing[1],
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing[5],
+    paddingHorizontal: Spacing[4],
     paddingVertical: Spacing[3],
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
   },
-  backText: {
-    fontFamily: Typography.fontBody,
-    fontSize: Typography.md,
-    color: Colors.charcoal,
-    fontWeight: '400',
+  iconCircleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
   },
   headerUsername: {
     fontFamily: Typography.fontBody,
     fontSize: Typography.sm,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 1.5,
     color: Colors.charcoal,
-    letterSpacing: 0.5,
   },
-  profileRow: {
+  curatorPill: {
+    backgroundColor: Colors.goldDust,
+    paddingHorizontal: Spacing[2],
+    paddingVertical: 2,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+  },
+  curatorPillText: {
+    fontFamily: Typography.fontBody,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: Colors.textGold,
+  },
+
+  heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing[5],
-    paddingTop: Spacing[5],
-    gap: Spacing[5],
+    paddingHorizontal: Spacing[4],
+    paddingTop: Spacing[4],
+    gap: Spacing[4],
+  },
+  avatarRing: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    borderWidth: 2,
+    borderColor: Colors.gold,
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: '100%',
+    height: '100%',
+    borderRadius: 39,
     backgroundColor: Colors.softGray,
-    borderWidth: 2,
-    borderColor: Colors.border,
   },
-  statsRow: { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
-  statBlock: { alignItems: 'center', gap: 2 },
-  statValue: { fontFamily: Typography.fontBody, fontSize: Typography.md, fontWeight: '700', color: Colors.charcoal },
-  statLabel: { fontFamily: Typography.fontBody, fontSize: Typography.xs, color: Colors.textSecondary, fontWeight: '500' },
-  bioSection: { paddingHorizontal: Spacing[5], paddingTop: Spacing[3], gap: Spacing[1] },
-  displayName: { fontFamily: Typography.fontBody, fontSize: Typography.base, fontWeight: '700', color: Colors.charcoal },
-  bio: { fontFamily: Typography.fontBody, fontSize: Typography.sm, color: Colors.charcoal, lineHeight: Typography.sm * 1.5 },
-  location: { fontFamily: Typography.fontBody, fontSize: Typography.xs, color: Colors.textSecondary },
-  actionsRow: { flexDirection: 'row', paddingHorizontal: Spacing[5], paddingTop: Spacing[4], paddingBottom: Spacing[5], gap: Spacing[3] },
-  followBtn: {
-    flex: 1,
+  avatarFallback: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 39,
     backgroundColor: Colors.charcoal,
-    borderRadius: Radii.md,
-    paddingVertical: Spacing[2] + 2,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography['2xl'],
+    fontWeight: '700',
+    color: Colors.warmWhite,
+  },
+
+  statsCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: Colors.surface,
+    paddingVertical: Spacing[3],
+    paddingHorizontal: Spacing[2],
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    ...Shadows.sm,
+  },
+  statBlock: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  statValue: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.base,
+    fontWeight: '800',
+    color: Colors.charcoal,
+  },
+  statLabel: {
+    fontFamily: Typography.fontBody,
+    fontSize: 10,
+    color: Colors.textSecondary,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: Colors.borderLight,
+  },
+
+  bioSection: {
+    paddingHorizontal: Spacing[4],
+    paddingTop: Spacing[3],
+    gap: Spacing[1],
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  displayName: {
+    fontFamily: Typography.fontDisplay,
+    fontSize: 22,
+    fontWeight: '600',
+    color: Colors.charcoal,
+  },
+  verifiedBadgeWrap: {
+    marginTop: 1,
+  },
+  privatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.softGray,
+    paddingHorizontal: Spacing[2],
+    paddingVertical: 2,
+    borderRadius: Radii.full,
+    marginLeft: 4,
+  },
+  privatePillText: {
+    fontFamily: Typography.fontBody,
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  bioText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    color: Colors.charcoal,
+    lineHeight: Typography.sm * 1.5,
+  },
+  locationPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.softGray,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: Spacing[2] + 2,
+    paddingVertical: 3,
+    borderRadius: Radii.full,
+    marginTop: 4,
+  },
+  locationText: {
+    fontFamily: Typography.fontBody,
+    fontSize: 10,
+    color: Colors.darkGray,
+    fontWeight: '600',
+  },
+
+  actionRow: {
+    paddingHorizontal: Spacing[4],
+    paddingTop: Spacing[4],
+    paddingBottom: Spacing[2],
+  },
+  followBtn: {
+    backgroundColor: Colors.charcoal,
+    borderRadius: Radii.full,
+    paddingVertical: Spacing[3],
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing[2],
+    ...Shadows.sm,
   },
   followingBtn: {
     backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.borderGold,
   },
-  followBtnText: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '700', color: Colors.warmWhite },
-  followingBtnText: { color: Colors.charcoal },
-  gridBar: {
+  followBtnText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    fontWeight: '700',
+    color: Colors.warmWhite,
+  },
+  followingBtnText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    fontWeight: '700',
+    color: Colors.charcoal,
+  },
+
+  gridSectionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
     paddingVertical: Spacing[3],
-    paddingHorizontal: Spacing[5],
+    paddingHorizontal: Spacing[4],
     gap: Spacing[3],
+    marginTop: Spacing[2],
   },
-  gridBarLine: { flex: 1, height: 1, backgroundColor: Colors.borderLight },
-  gridBarLabel: { fontFamily: Typography.fontBody, fontSize: Typography.xs, fontWeight: '700', letterSpacing: 2, color: Colors.textSecondary },
-  columnWrapper: { gap: 1.5 },
-  thumb: { width: THUMB, height: THUMB, backgroundColor: Colors.softGray },
-  thumbImage: { width: '100%', height: '100%' },
-  empty: { paddingTop: 60, alignItems: 'center', gap: Spacing[3] },
-  emptyIcon: { fontSize: 36, color: Colors.midGray },
-  emptyTitle: { fontFamily: Typography.fontDisplay, fontSize: Typography['2xl'], color: Colors.charcoal },
+  gridBarLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.borderLight,
+  },
+  gridBarLabel: {
+    fontFamily: Typography.fontBody,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: Colors.textSecondary,
+  },
+
+  columnWrapper: {
+    gap: GAP,
+  },
+  thumb: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    backgroundColor: Colors.softGray,
+    position: 'relative',
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  multiMediaBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    padding: 3,
+    borderRadius: 4,
+  },
+
   privateWrap: {
     paddingTop: 60,
     alignItems: 'center',
@@ -297,18 +568,16 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: Colors.softGray,
+    backgroundColor: Colors.goldDust,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing[2],
   },
-  lockIcon: {
-    fontSize: 26,
-  },
   privateTitle: {
     fontFamily: Typography.fontDisplay,
     fontSize: Typography.xl,
-    fontWeight: '700',
     color: Colors.charcoal,
     textAlign: 'center',
   },
@@ -319,5 +588,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: Typography.sm * 1.5,
     maxWidth: 280,
+  },
+
+  empty: {
+    paddingTop: 60,
+    alignItems: 'center',
+    paddingHorizontal: Spacing[6],
+    gap: Spacing[2],
+  },
+  emptyIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.goldDust,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing[1],
+  },
+  emptyIcon: {
+    fontSize: 20,
+    color: Colors.gold,
+  },
+  emptyTitle: {
+    fontFamily: Typography.fontDisplay,
+    fontSize: Typography['2xl'],
+    color: Colors.charcoal,
+  },
+  emptySubtitle: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
 });

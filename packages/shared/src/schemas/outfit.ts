@@ -21,8 +21,8 @@ export const CreateOutfitSchema = z.object({
         brand: z.string().max(100).optional(),
         price: z.number().nonnegative().optional(),
         currency: z.string().length(3).optional(),
-        productUrl: z.string().url('Invalid product URL'),
-        imageUrl: z.string().url('Invalid image URL').optional(),
+        productUrl: z.string().optional(),
+        imageUrl: z.string().optional(),
         isAffiliate: z.boolean().default(false),
       }),
     )
@@ -66,8 +66,10 @@ export const FeedQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   type: z.enum(['personalized', 'following', 'trending', 'latest']).default('personalized'),
+  refresh: z.string().optional(), // 'true' | '1' — bypass server-side cache for pull-to-refresh
 });
 export type FeedQueryInput = z.infer<typeof FeedQuerySchema>;
+
 
 export const ExploreQuerySchema = z.object({
   cursor: z.string().optional(),

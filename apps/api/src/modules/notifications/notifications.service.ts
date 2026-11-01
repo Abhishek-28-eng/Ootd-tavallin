@@ -1,9 +1,10 @@
 // ============================================================
-// Notifications Service
+// Notifications Service — create + retrieve + push dispatch
 // ============================================================
 import { Op } from 'sequelize';
 import { Notification, User, UserProfile, DeviceToken } from '../../database/models';
 import { AppError } from '../../shared/errors/AppError';
+import { pushService, PushService } from './push.service';
 import type { DeviceTokenRequest } from '@tavallin/shared';
 
 export interface NotificationDTO {
@@ -21,7 +22,101 @@ export interface NotificationDTO {
   createdAt: string;
 }
 
+export interface CreateNotificationInput {
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  actorId?: string;
+  targetId?: string;
+  targetType?: string;
+  deepLink?: string;
+}
+
 export class NotificationsService {
+  // ─── Create notification + fire push ──────────────────────────
+  async createNotification(input: CreateNotificationInput): Promise<void> {
+    // Don't notify yourself
+    if (input.actorId && input.actorId === input.userId) return;
+
+    await Notification.create({
+      userId: input.userId,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      actorId: input.actorId ?? null,
+      targetId: input.targetId ?? null,
+      targetType: input.targetType ?? null,
+      deepLink: input.deepLink ?? null,
+      isRead: false,
+    });
+
+    // Fire push asynchronously — don't await to avoid blocking the main request
+    void pushService.sendToUser(input.userId, {
+      title: input.title,
+      body: input.body,
+      data: {
+        type: input.type,
+        targetId: input.targetId,
+        targetType: input.targetType,
+        deepLink: input.deepLink,
+      },
+      priority: 'high',
+    });
+  }
+
+  // ─── Like notification helper ──────────────────────────────────
+  async notifyLike(actorId: string, actorUsername: string, postOwnerId: string, postId: string): Promise<void> {
+    const payload = PushService.likePayload(actorUsername, postId);
+    await this.createNotification({
+      userId: postOwnerId,
+      type: 'outfit_liked',
+      title: payload.title,
+      body: payload.body,
+      actorId,
+      targetId: postId,
+      targetType: 'outfit',
+      deepLink: `/outfit/${postId}`,
+    });
+  }
+
+  // ─── Comment notification helper ──────────────────────────────
+  async notifyComment(
+    actorId: string,
+    actorUsername: string,
+    postOwnerId: string,
+    postId: string,
+    commentText: string,
+  ): Promise<void> {
+    const payload = PushService.commentPayload(actorUsername, postId, commentText);
+    await this.createNotification({
+      userId: postOwnerId,
+      type: 'outfit_commented',
+      title: payload.title,
+      body: payload.body,
+      actorId,
+      targetId: postId,
+      targetType: 'outfit',
+      deepLink: `/outfit/${postId}`,
+    });
+  }
+
+  // ─── Follow notification helper ────────────────────────────────
+  async notifyFollow(actorId: string, actorUsername: string, targetUserId: string): Promise<void> {
+    const payload = PushService.followPayload(actorUsername);
+    await this.createNotification({
+      userId: targetUserId,
+      type: 'new_follower',
+      title: payload.title,
+      body: payload.body,
+      actorId,
+      targetId: actorId,
+      targetType: 'user',
+      deepLink: `/user/${actorUsername}`,
+    });
+  }
+
+  // ─── Get user notifications ────────────────────────────────────
   async getNotifications(
     userId: string,
     cursor?: string,
@@ -40,6 +135,7 @@ export class NotificationsService {
             model: User,
             as: 'actor',
             attributes: ['id', 'username'],
+            required: false,
             include: [
               {
                 model: UserProfile,
@@ -94,7 +190,6 @@ export class NotificationsService {
   async markAsRead(notificationId: string, userId: string): Promise<void> {
     const notification = await Notification.findOne({ where: { id: notificationId, userId } });
     if (!notification) throw AppError.notFound('Notification not found');
-
     await notification.update({ isRead: true, readAt: new Date() });
   }
 

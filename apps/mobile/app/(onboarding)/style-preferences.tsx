@@ -36,10 +36,10 @@ export default function StylePreferencesScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.stepIndicator}>STEP 2 OF 5</Text>
+          <Text style={styles.stepIndicator}>STEP 2 OF 4</Text>
         </View>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: '40%' }]} />
+          <View style={[styles.progressFill, { width: '50%' }]} />
         </View>
       </View>
 

@@ -1,6 +1,6 @@
 // ============================================================
-// Settings Screen — /settings
-// Edit profile, preferences, account actions
+// Settings Screen — Tavallin Luxury Studio & Preferences
+// Edit profile identity, privacy preferences, account actions
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
@@ -21,8 +21,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Colors, Typography, Spacing, Radii } from '../src/design/tokens';
+import { Colors, Typography, Spacing, Radii, Shadows } from '../src/design/tokens';
 import { apiClient } from '../src/lib/apiClient';
 import { useMyProfile } from '../src/hooks/useUserProfile';
 import { useAuthStore } from '../src/stores/authStore';
@@ -42,17 +43,19 @@ function RowItem({
   value,
   onPress,
   danger,
+  icon,
 }: {
   label: string;
   value?: string | undefined;
   onPress: () => void;
   danger?: boolean | undefined;
+  icon?: string;
 }) {
   return (
     <TouchableOpacity style={styles.rowItem} onPress={onPress} activeOpacity={0.7}>
       <Text style={[styles.rowLabel, danger && styles.dangerText]}>{label}</Text>
       {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-      <Text style={styles.rowChevron}>›</Text>
+      <Feather name="chevron-right" size={18} color={danger ? Colors.error : Colors.midGray} />
     </TouchableOpacity>
   );
 }
@@ -115,7 +118,7 @@ export default function SettingsScreen() {
           refetchProfile(),
           qc.invalidateQueries({ queryKey: ['profile', 'me'] }),
         ]);
-        Alert.alert('Success', 'Profile photo updated!');
+        Alert.alert('Updated', 'Profile portrait refreshed.');
       }
     } catch (err: any) {
       console.error('Avatar upload error:', err);
@@ -139,7 +142,7 @@ export default function SettingsScreen() {
       });
       void qc.invalidateQueries({ queryKey: ['profile', 'me'] });
       void qc.invalidateQueries({ queryKey: ['user', updated.username] });
-      Alert.alert('Saved', 'Your profile has been updated.');
+      Alert.alert('Saved', 'Your curator profile has been updated.');
     },
     onError: () => Alert.alert('Error', 'Could not update profile.'),
   });
@@ -165,7 +168,7 @@ export default function SettingsScreen() {
           val ? 'Account Set to Private' : 'Account Set to Public',
           val
             ? 'Only approved followers can view your looks and wardrobe.'
-            : 'Your lookbook is now public to the Tavallin fashion community.',
+            : 'Your lookbook is now public to the OOTDi fashion community.',
         );
       }
     } catch (err: any) {
@@ -194,7 +197,7 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+    Alert.alert('Sign Out', 'Are you sure you want to exit your OOTDi session?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
@@ -210,12 +213,12 @@ export default function SettingsScreen() {
 
   const handleDeleteAccount = () => {
     Alert.alert(
-      'Delete Account',
-      'This will permanently delete your account and all your posts. This action cannot be undone.',
+      'Delete Portfolio',
+      'This will permanently delete your lookbook, account, and all published fits. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Delete Permanently',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -234,13 +237,23 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
+      {/* Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.iconCircleBtn} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={18} color={Colors.charcoal} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>SETTINGS</Text>
-        <TouchableOpacity onPress={handleSave} disabled={updateMutation.isPending} style={styles.saveBtn}>
+
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerEyebrow}>✦ PREFERENCES</Text>
+          <Text style={styles.headerTitle}>SETTINGS</Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={handleSave}
+          disabled={updateMutation.isPending}
+          style={[styles.saveBtn, updateMutation.isPending && { opacity: 0.6 }]}
+          activeOpacity={0.85}
+        >
           {updateMutation.isPending ? (
             <ActivityIndicator color={Colors.warmWhite} size="small" />
           ) : (
@@ -251,29 +264,40 @@ export default function SettingsScreen() {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* Avatar Header Section */}
+          {/* Avatar Section */}
           <View style={styles.avatarSection}>
-            <View style={styles.settingsAvatarWrap}>
-              {profile?.avatarUrl ? (
-                <Image
-                  source={{ uri: profile.avatarUrl }}
-                  style={styles.settingsAvatar}
-                  contentFit="cover"
-                  cachePolicy="memory-disk"
-                />
-              ) : (
-                <View style={styles.settingsAvatarPlaceholder}>
-                  <Text style={styles.settingsAvatarInitial}>
-                    {(displayName || profile?.username || 'U')[0]?.toUpperCase()}
-                  </Text>
-                </View>
-              )}
-              {isUploadingAvatar && (
-                <View style={styles.settingsAvatarOverlay}>
-                  <ActivityIndicator color={Colors.warmWhite} size="small" />
-                </View>
-              )}
-            </View>
+            <TouchableOpacity
+              style={styles.avatarRingWrap}
+              onPress={handlePickAvatar}
+              disabled={isUploadingAvatar}
+              activeOpacity={0.85}
+            >
+              <View style={styles.avatarBorderRing}>
+                {profile?.avatarUrl ? (
+                  <Image
+                    source={{ uri: profile.avatarUrl }}
+                    style={styles.settingsAvatar}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                ) : (
+                  <View style={styles.settingsAvatarPlaceholder}>
+                    <Text style={styles.settingsAvatarInitial}>
+                      {(displayName || profile?.username || 'U')[0]?.toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                {isUploadingAvatar && (
+                  <View style={styles.settingsAvatarOverlay}>
+                    <ActivityIndicator color={Colors.warmWhite} size="small" />
+                  </View>
+                )}
+              </View>
+              <View style={styles.cameraBadge}>
+                <Ionicons name="camera" size={14} color={Colors.warmWhite} />
+              </View>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.changePhotoBtn}
               onPress={handlePickAvatar}
@@ -281,98 +305,104 @@ export default function SettingsScreen() {
               activeOpacity={0.8}
             >
               <Text style={styles.changePhotoText}>
-                {isUploadingAvatar ? 'Uploading...' : 'Change Profile Photo'}
+                {isUploadingAvatar ? 'Updating portrait…' : 'Change Profile Portrait'}
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Profile */}
-          <Section title="Profile">
+          {/* Profile Identity */}
+          <Section title="PROFILE IDENTITY">
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Display Name</Text>
+              <Text style={styles.fieldLabel}>DISPLAY NAME</Text>
               <TextInput
                 style={styles.fieldInput}
                 value={displayName}
                 onChangeText={setDisplayName}
-                placeholder="Your name"
+                placeholder="Your curated name"
                 placeholderTextColor={Colors.textPlaceholder}
                 maxLength={50}
               />
             </View>
-            <View style={[styles.fieldWrap, styles.fieldNoBorder]}>
-              <Text style={styles.fieldLabel}>Username</Text>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>LOOKBOOK USERNAME</Text>
               <Text style={styles.fieldReadonly}>@{profile?.username}</Text>
             </View>
+
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Bio</Text>
+              <View style={styles.labelCountRow}>
+                <Text style={styles.fieldLabel}>BIO & STYLING ESSENCE</Text>
+                <Text style={styles.charCount}>{bio.length}/160</Text>
+              </View>
               <TextInput
                 style={[styles.fieldInput, styles.fieldMultiline]}
                 value={bio}
                 onChangeText={setBio}
-                placeholder="Tell the world about your style…"
+                placeholder="Describe your aesthetic philosophy, inspirations, or wardrobe DNA…"
                 placeholderTextColor={Colors.textPlaceholder}
                 multiline
                 maxLength={160}
                 textAlignVertical="top"
               />
             </View>
+
             <View style={[styles.fieldWrap, styles.fieldNoBorder]}>
-              <Text style={styles.fieldLabel}>Location</Text>
+              <Text style={styles.fieldLabel}>LOCATION</Text>
               <TextInput
                 style={styles.fieldInput}
                 value={location}
                 onChangeText={setLocation}
-                placeholder="City, Country"
+                placeholder="Paris, Tokyo, New York..."
                 placeholderTextColor={Colors.textPlaceholder}
               />
             </View>
           </Section>
 
           {/* Privacy */}
-          <Section title="Privacy">
+          <Section title="LOOKBOOK VISIBILITY">
             <View style={[styles.rowItem, styles.switchRow]}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.rowLabel}>Private Account</Text>
-                <Text style={styles.rowSubLabel}>Only approved followers can see your posts</Text>
+                <Text style={styles.rowLabel}>Private Wardrobe</Text>
+                <Text style={styles.rowSubLabel}>Only approved followers can view your fits and saved capsules</Text>
               </View>
               <Switch
                 value={isPrivate}
                 onValueChange={handleTogglePrivate}
-                trackColor={{ false: Colors.midGray, true: Colors.charcoal }}
+                trackColor={{ false: Colors.border, true: Colors.gold }}
                 thumbColor={Colors.warmWhite}
               />
             </View>
           </Section>
 
-          {/* Account */}
-          <Section title="Account">
+          {/* Account Security */}
+          <Section title="SECURITY & CREDENTIALS">
             <RowItem
-              label="Change Password"
+              label="Reset Password"
               onPress={() => router.push('/(auth)/forgot-password')}
             />
             <RowItem
-              label="Email"
+              label="Verified Email"
               value={profile?.email}
-              onPress={() => Alert.alert('Email', 'Contact support to change your email address.')}
+              onPress={() => Alert.alert('Email', 'To update your primary email address, please contact concierge support.')}
             />
           </Section>
 
           {/* About */}
-          <Section title="About">
+          <Section title="ABOUT OOTDi">
             <RowItem label="Terms of Service" onPress={() => {}} />
             <RowItem label="Privacy Policy" onPress={() => {}} />
-            <RowItem label="Affiliate Disclosure" onPress={() => {}} />
+            <RowItem label="Editorial Standards" onPress={() => {}} />
             <RowItem
               label="App Version"
-              value="1.0.0"
+              value="1.0.0 (Gold Haute)"
               onPress={() => {}}
             />
           </Section>
 
-          {/* Danger zone */}
-          <Section title="Account Actions">
+          {/* Account Actions */}
+          <Section title="ACCOUNT ACTIONS">
             <RowItem label="Sign Out" onPress={handleSignOut} danger />
-            <RowItem label="Delete Account" onPress={handleDeleteAccount} danger />
+            <RowItem label="Delete Portfolio" onPress={handleDeleteAccount} danger />
           </Section>
 
           <View style={{ height: Spacing[10] }} />
@@ -383,94 +413,105 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.softGray },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.warmWhite,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing[5],
-    paddingVertical: Spacing[3],
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[2],
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
     backgroundColor: Colors.warmWhite,
   },
-  backText: { fontFamily: Typography.fontBody, fontSize: Typography.sm, color: Colors.textSecondary },
-  headerTitle: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '700', letterSpacing: 3, color: Colors.charcoal },
-  saveBtn: { backgroundColor: Colors.charcoal, borderRadius: Radii.full, paddingHorizontal: Spacing[4], paddingVertical: Spacing[1] + 2, minWidth: 52, alignItems: 'center' },
-  saveBtnText: { fontFamily: Typography.fontBody, fontSize: Typography.sm, fontWeight: '700', color: Colors.warmWhite },
-  scroll: { paddingVertical: Spacing[5] },
-  section: { marginBottom: Spacing[5], marginHorizontal: Spacing[4] },
-  sectionTitle: {
-    fontFamily: Typography.fontBody,
-    fontSize: Typography.xs,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    color: Colors.textSecondary,
-    marginBottom: Spacing[2],
-    paddingHorizontal: Spacing[1],
-    textTransform: 'uppercase',
-  },
-  sectionCard: {
+  iconCircleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: Colors.surface,
-    borderRadius: Radii.lg,
-    overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.borderLight,
-  },
-  fieldWrap: {
-    paddingHorizontal: Spacing[4],
-    paddingVertical: Spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-    gap: Spacing[1],
-  },
-  fieldNoBorder: { borderBottomWidth: 0 },
-  fieldLabel: { fontFamily: Typography.fontBody, fontSize: Typography.xs, fontWeight: '600', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-  fieldInput: { fontFamily: Typography.fontBody, fontSize: Typography.base, color: Colors.charcoal, paddingVertical: Spacing[1] },
-  fieldMultiline: { minHeight: 72, paddingTop: Spacing[1] },
-  fieldReadonly: { fontFamily: Typography.fontBody, fontSize: Typography.base, color: Colors.textSecondary },
-  rowItem: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing[4],
-    paddingVertical: Spacing[4],
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
+    justifyContent: 'center',
   },
-  switchRow: { gap: Spacing[3] },
-  rowLabel: { fontFamily: Typography.fontBody, fontSize: Typography.base, color: Colors.charcoal, flex: 1 },
-  rowSubLabel: { fontFamily: Typography.fontBody, fontSize: Typography.xs, color: Colors.textSecondary, marginTop: 2 },
-  rowValue: { fontFamily: Typography.fontBody, fontSize: Typography.sm, color: Colors.textSecondary, marginRight: Spacing[2] },
-  rowChevron: { fontSize: 20, color: Colors.midGray },
+  headerTitleWrap: {
+    alignItems: 'center',
+  },
+  headerEyebrow: {
+    fontFamily: Typography.fontBody,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: Colors.textGold,
+  },
+  headerTitle: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    letterSpacing: 2,
+    color: Colors.charcoal,
+  },
+  saveBtn: {
+    backgroundColor: Colors.charcoal,
+    borderRadius: Radii.full,
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[1] + 3,
+    minWidth: 58,
+    alignItems: 'center',
+    ...Shadows.sm,
+  },
+  saveBtnText: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm,
+    fontWeight: '700',
+    color: Colors.warmWhite,
+  },
+  scroll: {
+    paddingVertical: Spacing[5],
+  },
+
+  // ─── Avatar ────────────────────────────────────────────────
   avatarSection: {
     alignItems: 'center',
     marginBottom: Spacing[6],
     gap: Spacing[3],
   },
-  settingsAvatarWrap: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    overflow: 'hidden',
-    backgroundColor: Colors.softGray,
-    borderWidth: 2,
-    borderColor: Colors.border,
+  avatarRingWrap: {
     position: 'relative',
+    width: 94,
+    height: 94,
+  },
+  avatarBorderRing: {
+    width: 94,
+    height: 94,
+    borderRadius: 47,
+    borderWidth: 2,
+    borderColor: Colors.gold,
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
   },
   settingsAvatar: {
     width: '100%',
     height: '100%',
+    borderRadius: 45,
+    backgroundColor: Colors.softGray,
   },
   settingsAvatarPlaceholder: {
     width: '100%',
     height: '100%',
+    borderRadius: 45,
     backgroundColor: Colors.charcoal,
     alignItems: 'center',
     justifyContent: 'center',
   },
   settingsAvatarInitial: {
     fontFamily: Typography.fontBody,
-    fontSize: Typography['2xl'],
+    fontSize: Typography['3xl'],
     fontWeight: '700',
     color: Colors.warmWhite,
   },
@@ -480,7 +521,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 45,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.charcoal,
+    borderWidth: 2,
+    borderColor: Colors.warmWhite,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -490,13 +545,113 @@ const styles = StyleSheet.create({
     borderRadius: Radii.full,
     backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.borderGold,
+    ...Shadows.sm,
   },
   changePhotoText: {
     fontFamily: Typography.fontBody,
-    fontSize: Typography.sm,
-    fontWeight: '600',
+    fontSize: Typography.xs + 1,
+    fontWeight: '700',
     color: Colors.charcoal,
   },
-  dangerText: { color: Colors.error },
+
+  // ─── Sections ──────────────────────────────────────────────
+  section: {
+    marginBottom: Spacing[5],
+    marginHorizontal: Spacing[4],
+  },
+  sectionTitle: {
+    fontFamily: Typography.fontBody,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: Colors.textSecondary,
+    marginBottom: Spacing[2],
+    paddingHorizontal: Spacing[1],
+  },
+  sectionCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radii.xl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    ...Shadows.sm,
+  },
+  fieldWrap: {
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    gap: 2,
+  },
+  fieldNoBorder: {
+    borderBottomWidth: 0,
+  },
+  fieldLabel: {
+    fontFamily: Typography.fontBody,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: Colors.textSecondary,
+  },
+  labelCountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  charCount: {
+    fontFamily: Typography.fontBody,
+    fontSize: 10,
+    color: Colors.textTertiary,
+  },
+  fieldInput: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm + 1,
+    color: Colors.charcoal,
+    paddingVertical: Spacing[1],
+  },
+  fieldMultiline: {
+    minHeight: 70,
+    paddingTop: Spacing[1],
+  },
+  fieldReadonly: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm + 1,
+    color: Colors.textSecondary,
+    paddingVertical: Spacing[1],
+  },
+
+  rowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[4],
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  switchRow: {
+    gap: Spacing[3],
+  },
+  rowLabel: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.sm + 1,
+    color: Colors.charcoal,
+    fontWeight: '600',
+    flex: 1,
+  },
+  rowSubLabel: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  rowValue: {
+    fontFamily: Typography.fontBody,
+    fontSize: Typography.xs + 1,
+    color: Colors.textSecondary,
+    marginRight: Spacing[2],
+  },
+  dangerText: {
+    color: Colors.error,
+  },
 });

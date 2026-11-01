@@ -18,23 +18,28 @@ import {
 } from '../../database/models';
 import { AppError } from '../../shared/errors/AppError';
 import { mediaService } from '../media/media.service';
+import { cacheGet, cacheSet, cacheDelPattern, CacheKeys } from '../../config/redis';
+import { notificationsService } from '../notifications/notifications.service';
 import type { CreateOutfitInput } from '@tavallin/shared';
 import type { UploadedFile } from '../media/media.service';
 
 // ─── Response DTOs ────────────────────────────────────────────
 export interface OutfitCardDTO {
   id: string;
+  savedAt?: string;
   creator: {
     id: string;
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    location?: string | null;
   };
   author: {
     id: string;
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    location?: string | null;
   };
   media: Array<{
     id?: string;
@@ -141,6 +146,11 @@ export class OutfitsService {
 
     // Increment user posts count
     await UserProfile.increment({ postsCount: 1 }, { where: { userId } });
+
+    // Invalidate feed caches
+    void cacheDelPattern('feed:*');
+    void cacheDelPattern('explore:*');
+    void cacheDelPattern('spotlight*');
 
     return this.getPostById(post.id, userId);
   }
@@ -252,6 +262,11 @@ export class OutfitsService {
     // Soft delete
     await post.update({ deletedAt: new Date(), status: 'removed' });
     await UserProfile.decrement({ postsCount: 1 }, { where: { userId } });
+
+    // Invalidate feed caches
+    void cacheDelPattern('feed:*');
+    void cacheDelPattern('explore:*');
+    void cacheDelPattern('spotlight*');
   }
 
   // ─── Toggle like ──────────────────────────────────────────────
@@ -270,6 +285,18 @@ export class OutfitsService {
       await PostLike.create({ userId, outfitPostId: postId });
       await OutfitPost.increment({ likesCount: 1 }, { where: { id: postId } });
       await post.reload();
+
+      // Trigger push notification if not liking own post
+      if (post.userId !== userId) {
+        User.findByPk(userId, { attributes: ['username'] })
+          .then((actor) => {
+            if (actor) {
+              void notificationsService.notifyLike(userId, actor.username, post.userId, postId);
+            }
+          })
+          .catch(() => undefined);
+      }
+
       return { liked: true, likesCount: post.likesCount ?? 0 };
     }
   }
@@ -302,7 +329,15 @@ export class OutfitsService {
     type: 'personalized' | 'following' | 'trending' | 'latest',
     cursor?: string,
     limit = 20,
+    refresh = false,
   ): Promise<OutfitCardDTO[]> {
+    const cacheKey = CacheKeys.feed(userId, type, cursor);
+    // Skip cache on explicit refresh OR when paginating (cursor present gets shorter TTL)
+    if (!refresh) {
+      const cached = await cacheGet<OutfitCardDTO[]>(cacheKey);
+      if (cached) return cached;
+    }
+
     const where: Record<string, unknown> = {
       status: 'published',
       deletedAt: null,
@@ -335,7 +370,7 @@ export class OutfitsService {
           model: User,
           as: 'author',
           attributes: ['id', 'username'],
-          include: [{ model: UserProfile, as: 'profile', attributes: ['displayName', 'avatarUrl'] }],
+          include: [{ model: UserProfile, as: 'profile', attributes: ['displayName', 'avatarUrl', 'location'] }],
         },
         {
           model: OutfitMedia,
@@ -344,6 +379,12 @@ export class OutfitsService {
           separate: true,
           order: [['orderIndex', 'ASC']],
           limit: 1, // Only first image for feed cards
+        },
+        {
+          model: ProductReference,
+          as: 'products',
+          attributes: ['id', 'productName', 'brand', 'price', 'currency', 'productUrl', 'imageUrl'],
+          required: false,
         },
       ],
       order,
@@ -359,15 +400,26 @@ export class OutfitsService {
     const likedSet = new Set(likes.map((l) => l.outfitPostId));
     const savedSet = new Set(saves.map((s) => s.outfitPostId));
 
-    return posts.map((post) => {
+    const result = posts.map((post) => {
       const author = post.get('author') as User;
       const authorProfile = (author as any)?.profile as UserProfile | undefined;
       const mediaItems = (post.get('media') as OutfitMedia[]) ?? [];
+      const productList = ((post.get('products') as ProductReference[]) ?? []).map((p) => ({
+        id: p.id,
+        productName: p.productName,
+        name: p.productName,
+        brand: p.brand,
+        price: p.price ? Number(p.price) : null,
+        currency: p.currency,
+        productUrl: p.productUrl,
+        imageUrl: p.imageUrl,
+      }));
       const userSummary = {
         id: author?.id || '',
         username: author?.username || 'user',
         displayName: authorProfile?.displayName || author?.username || 'User',
         avatarUrl: authorProfile?.avatarUrl ?? null,
+        location: authorProfile?.location ?? null,
       };
       return {
         id: post.id,
@@ -397,10 +449,16 @@ export class OutfitsService {
         occasions: post.occasions
           ? (typeof post.occasions === 'string' ? JSON.parse(post.occasions) : post.occasions)
           : [],
-        products: [],
+        products: productList,
         createdAt: post.createdAt.toISOString(),
       };
     });
+
+    // First-page (no cursor) caches for 30s so fresh posts surface quickly
+    // Paginated pages cache longer since they're historical data
+    const ttl = cursor ? 300 : 30;
+    void cacheSet(cacheKey, result, ttl);
+    return result;
   }
 
   // ─── Explore feed (filtered) ──────────────────────────────────
@@ -433,7 +491,7 @@ export class OutfitsService {
         as: 'author',
         where: { isPrivate: false, isSuspended: false },
         attributes: ['id', 'username'],
-        include: [{ model: UserProfile, as: 'profile', attributes: ['displayName', 'avatarUrl'] }],
+        include: [{ model: UserProfile, as: 'profile', attributes: ['displayName', 'avatarUrl', 'location'] }],
       },
       {
         model: OutfitMedia,
@@ -442,6 +500,12 @@ export class OutfitsService {
         separate: true,
         order: [['orderIndex', 'ASC']],
         limit: 1,
+      },
+      {
+        model: ProductReference,
+        as: 'products',
+        attributes: ['id', 'productName', 'brand', 'price', 'currency', 'productUrl', 'imageUrl'],
+        required: false,
       },
     ];
 
@@ -480,11 +544,22 @@ export class OutfitsService {
       const author = post.get('author') as User;
       const authorProfile = (author as any)?.profile as UserProfile | undefined;
       const mediaItems = (post.get('media') as OutfitMedia[]) ?? [];
+      const productList = ((post.get('products') as ProductReference[]) ?? []).map((p) => ({
+        id: p.id,
+        productName: p.productName,
+        name: p.productName,
+        brand: p.brand,
+        price: p.price ? Number(p.price) : null,
+        currency: p.currency,
+        productUrl: p.productUrl,
+        imageUrl: p.imageUrl,
+      }));
       const userSummary = {
         id: author?.id || '',
         username: author?.username || 'user',
         displayName: authorProfile?.displayName || author?.username || 'User',
         avatarUrl: authorProfile?.avatarUrl ?? null,
+        location: authorProfile?.location ?? null,
       };
       return {
         id: post.id,
@@ -514,7 +589,7 @@ export class OutfitsService {
         occasions: post.occasions
           ? (typeof post.occasions === 'string' ? JSON.parse(post.occasions) : post.occasions)
           : [],
-        products: [],
+        products: productList,
         createdAt: post.createdAt.toISOString(),
       };
     });
@@ -555,7 +630,7 @@ export class OutfitsService {
           model: User,
           as: 'author',
           attributes: ['id', 'username'],
-          include: [{ model: UserProfile, as: 'profile', attributes: ['displayName', 'avatarUrl'] }],
+          include: [{ model: UserProfile, as: 'profile', attributes: ['displayName', 'avatarUrl', 'location'] }],
         },
         {
           model: OutfitMedia,
@@ -565,20 +640,50 @@ export class OutfitsService {
           order: [['orderIndex', 'ASC']],
           limit: 1,
         },
+        {
+          model: ProductReference,
+          as: 'products',
+          attributes: ['id', 'productName', 'brand', 'price', 'currency', 'productUrl', 'imageUrl'],
+          required: false,
+        },
       ],
       order: [['createdAt', 'DESC']],
       limit,
     });
 
+    const postIds = posts.map((p) => p.id);
+    let likedSet = new Set<string>();
+    let savedSet = new Set<string>();
+
+    if (requesterId && postIds.length) {
+      const [likes, saves] = await Promise.all([
+        PostLike.findAll({ where: { userId: requesterId, outfitPostId: { [Op.in]: postIds } } }),
+        SavedOutfit.findAll({ where: { userId: requesterId, outfitPostId: { [Op.in]: postIds } } }),
+      ]);
+      likedSet = new Set(likes.map((l) => l.outfitPostId));
+      savedSet = new Set(saves.map((s) => s.outfitPostId));
+    }
+
     return posts.map((post) => {
       const author = post.get('author') as User;
       const authorProfile = (author as any)?.profile as UserProfile | undefined;
       const mediaItems = (post.get('media') as OutfitMedia[]) ?? [];
+      const productList = ((post.get('products') as ProductReference[]) ?? []).map((p) => ({
+        id: p.id,
+        productName: p.productName,
+        name: p.productName,
+        brand: p.brand,
+        price: p.price ? Number(p.price) : null,
+        currency: p.currency,
+        productUrl: p.productUrl,
+        imageUrl: p.imageUrl,
+      }));
       const userSummary = {
         id: author?.id || '',
         username: author?.username || 'user',
         displayName: authorProfile?.displayName || author?.username || 'User',
         avatarUrl: authorProfile?.avatarUrl ?? null,
+        location: authorProfile?.location ?? null,
       };
       const firstMedia = mediaItems[0];
       const thumbnailUrl = firstMedia?.thumbnailUrl || firstMedia?.publicUrl || null;
@@ -601,9 +706,9 @@ export class OutfitsService {
         commentsCount: post.commentsCount ?? 0,
         savesCount: post.savesCount ?? 0,
         savedCount: post.savesCount ?? 0,
-        isLiked: false,
-        isSaved: false,
-        isOwner: false,
+        isLiked: likedSet.has(post.id),
+        isSaved: savedSet.has(post.id),
+        isOwner: requesterId ? post.userId === requesterId : false,
         tags: [],
         styleCategories: post.styleCategories
           ? (typeof post.styleCategories === 'string' ? JSON.parse(post.styleCategories) : post.styleCategories)
@@ -611,10 +716,167 @@ export class OutfitsService {
         occasions: post.occasions
           ? (typeof post.occasions === 'string' ? JSON.parse(post.occasions) : post.occasions)
           : [],
-        products: [],
+        products: productList,
         createdAt: post.createdAt.toISOString(),
       };
     });
+  }
+
+  // ─── Get user's saved outfits archive ─────────────────────────
+  async getSavedOutfits(
+    userId: string,
+    cursor?: string,
+    limit = 20,
+  ): Promise<OutfitCardDTO[]> {
+    const where: Record<string, unknown> = {
+      userId,
+    };
+    if (cursor) {
+      where['createdAt'] = { [Op.lt]: new Date(cursor) };
+    }
+
+    const savedRecords = await SavedOutfit.findAll({
+      where,
+      include: [
+        {
+          model: OutfitPost,
+          as: 'outfitPost',
+          where: { status: 'published', deletedAt: null },
+          include: [
+            {
+              model: User,
+              as: 'author',
+              attributes: ['id', 'username'],
+              include: [{ model: UserProfile, as: 'profile', attributes: ['displayName', 'avatarUrl', 'location'] }],
+            },
+            {
+              model: OutfitMedia,
+              as: 'media',
+              attributes: ['id', 'publicUrl', 'thumbnailUrl', 'width', 'height', 'orderIndex'],
+              separate: true,
+              order: [['orderIndex', 'ASC']],
+              limit: 1,
+            },
+            {
+              model: ProductReference,
+              as: 'products',
+              attributes: ['id', 'productName', 'brand', 'price', 'currency', 'productUrl', 'imageUrl'],
+              required: false,
+            },
+          ],
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit,
+    });
+
+    const postIds = savedRecords
+      .map((s) => (s as any).outfitPost?.id)
+      .filter((id): id is string => Boolean(id));
+
+    const likes = await PostLike.findAll({
+      where: { userId, outfitPostId: { [Op.in]: postIds } },
+      attributes: ['outfitPostId'],
+    });
+    const likedSet = new Set(likes.map((l) => l.outfitPostId));
+
+    return savedRecords
+      .map((record) => {
+        const post = (record as any).outfitPost as OutfitPost | undefined;
+        if (!post) return null;
+
+        const author = post.get('author') as User;
+        const authorProfile = (author as any)?.profile as UserProfile | undefined;
+        const mediaItems = (post.get('media') as OutfitMedia[]) ?? [];
+        const products = (post.get('products') as ProductReference[]) ?? [];
+
+        const userSummary = {
+          id: author?.id || '',
+          username: author?.username || 'user',
+          displayName: authorProfile?.displayName || author?.username || 'User',
+          avatarUrl: authorProfile?.avatarUrl ?? null,
+          location: authorProfile?.location ?? null,
+        };
+
+        const firstMedia = mediaItems[0];
+        const thumbnailUrl = firstMedia?.thumbnailUrl || firstMedia?.publicUrl || null;
+
+        return {
+          id: post.id,
+          savedAt: record.createdAt.toISOString(),
+          creator: userSummary,
+          author: userSummary,
+          thumbnailUrl,
+          media: mediaItems.map((m) => ({
+            id: m.id,
+            url: m.publicUrl,
+            publicUrl: m.publicUrl,
+            thumbnailUrl: m.thumbnailUrl ?? null,
+            width: m.width ?? null,
+            height: m.height ?? null,
+            orderIndex: m.orderIndex ?? 0,
+          })),
+          caption: post.caption ?? null,
+          likesCount: post.likesCount ?? 0,
+          commentsCount: post.commentsCount ?? 0,
+          savesCount: post.savesCount ?? 0,
+          savedCount: post.savesCount ?? 0,
+          isLiked: likedSet.has(post.id),
+          isSaved: true,
+          isOwner: post.userId === userId,
+          tags: [],
+          styleCategories: post.styleCategories
+            ? (typeof post.styleCategories === 'string' ? JSON.parse(post.styleCategories) : post.styleCategories)
+            : [],
+          occasions: post.occasions
+            ? (typeof post.occasions === 'string' ? JSON.parse(post.occasions) : post.occasions)
+            : [],
+          products: products.map((p) => ({
+            id: p.id,
+            productName: p.productName,
+            name: p.productName,
+            brand: p.brand,
+            price: p.price ? Number(p.price) : null,
+            currency: p.currency,
+            productUrl: p.productUrl,
+            imageUrl: p.imageUrl,
+          })),
+          createdAt: post.createdAt.toISOString(),
+        };
+      })
+      .filter((p): p is NonNullable<typeof p> => Boolean(p));
+  }
+
+  // ─── Editorial Issue Spotlight ────────────────────────────────
+  async getEditorialSpotlight(): Promise<{
+    issue: string;
+    season: string;
+    volume: string;
+    title: string;
+    curator: string;
+    lookbookCount: number;
+    trendingCategories: Array<{ key: string; label: string; count: number }>;
+  }> {
+    const counts = await OutfitPost.count({
+      where: { status: 'published', deletedAt: null },
+    });
+
+    return {
+      issue: 'ISSUE SPOTLIGHT',
+      season: 'FW 2025 · SEOUL',
+      volume: 'VOLUME 04 — EDITORIAL SELECTION',
+      title: 'Neo-Tailoring & Seoul Minimalism',
+      curator: 'Atelier OOTDi',
+      lookbookCount: Math.max(counts, 24),
+      trendingCategories: [
+        { key: 'minimal', label: 'MINIMAL', count: 1840 },
+        { key: 'streetwear', label: 'STREETWEAR', count: 3120 },
+        { key: 'old_money', label: 'OLD MONEY', count: 942 },
+        { key: 'formal', label: 'FORMAL', count: 1530 },
+        { key: 'college', label: 'COLLEGE FITS', count: 1200 },
+        { key: 'fusion', label: 'FUSION', count: 2400 },
+      ],
+    };
   }
 }
 

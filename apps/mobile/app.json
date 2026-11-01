@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Tavallin",
+    "name": "OOTDi",
     "slug": "tavallin",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,9 +17,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.tavallin.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "Tavallin uses your camera to capture outfit photos for sharing.",
-        "NSPhotoLibraryUsageDescription": "Tavallin accesses your photo library to share outfit photos.",
-        "NSPhotoLibraryAddUsageDescription": "Tavallin saves photos to your library.",
+        "NSCameraUsageDescription": "OOTDi uses your camera to capture outfit photos for sharing.",
+        "NSPhotoLibraryUsageDescription": "OOTDi accesses your photo library to share outfit photos.",
+        "NSPhotoLibraryAddUsageDescription": "OOTDi saves photos to your library.",
         "NSLocationWhenInUseUsageDescription": "Optional: your city is used for location-relevant fashion recommendations."
       }
     },
@@ -60,8 +60,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Tavallin accesses your photos to share outfit photos.",
-          "cameraPermission": "Tavallin uses your camera to capture outfit photos."
+          "photosPermission": "OOTDi accesses your photos to share outfit photos.",
+          "cameraPermission": "OOTDi uses your camera to capture outfit photos."
         }
       ],
       "expo-secure-store",
